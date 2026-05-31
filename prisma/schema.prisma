@@ -23,6 +23,7 @@ model User {
   projects        Project[]
   transactions    Transaction[]
   savingsPlans    SavingsPlan[]
+  savingsAssets   SavingsAsset[]
   salarySlips     SalarySlip[]
   employers       Employer[]
   categories      Category[]
@@ -243,6 +244,29 @@ model SavingsEntry {
 
   @@unique([planId, periodYear, periodMonth])
   @@index([planId, paid])
+}
+
+enum SavingsAssetKind {
+  GOLD
+  USD
+}
+
+model SavingsAsset {
+  id            String           @id @default(cuid())
+  userId        String
+  kind          SavingsAssetKind
+  title         String
+  quantity      Decimal          @db.Decimal(14, 4)
+  unitPrice     Decimal          @db.Decimal(14, 4)
+  priceCurrency String           @default("ILS")
+  valueIls      Decimal          @db.Decimal(14, 2)
+  notes         String?
+  updatedAt     DateTime         @default(now()) @updatedAt
+  createdAt     DateTime         @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, kind])
 }
 
 model Employer {

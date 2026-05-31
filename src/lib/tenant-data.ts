@@ -147,10 +147,9 @@ export async function getMonthlyOverview(
   });
 
   const totalIncome = incomeSources.reduce((sum, s) => sum + s.amount, 0);
-  const salaryFromSlips = salarySlips.reduce(
-    (sum, s) => sum + decimalToNumber(s.net),
-    0
-  );
+  const salaryFromSlips = salarySlips
+    .filter((s) => s.paid && s.worked)
+    .reduce((sum, s) => sum + decimalToNumber(s.net), 0);
   const salaryAmount =
     incomeSources.find((s) => s.isSalary)?.amount || salaryFromSlips;
 
@@ -447,7 +446,9 @@ export async function getAnnualShowcaseData(userId: string, year: number) {
     ? await getBuildingProjectSummary(userId, masterBuild.id)
     : null;
 
-  const yearSalarySlips = salarySlips.filter((s) => s.periodYear === year);
+  const yearSalarySlips = salarySlips.filter(
+    (s) => s.periodYear === year && s.paid && s.worked
+  );
   const salaryAnnual = {
     gross: yearSalarySlips.reduce(
       (s, x) => s + decimalToNumber(x.gross),
@@ -887,16 +888,19 @@ export async function getEmployerDetail(
     };
   });
 
+  const countsInTotals = (m: (typeof months)[number]) =>
+    m.worked && m.paid && m.exists;
+
   const totals = {
-    gross: months.reduce((s, m) => (m.worked ? s + m.gross : s), 0),
-    net: months.reduce((s, m) => s + m.effectiveNet, 0),
-    tax: months.reduce((s, m) => (m.worked ? s + m.tax : s), 0),
-    pension: months.reduce((s, m) => (m.worked ? s + m.pension : s), 0),
-    fees: months.reduce((s, m) => (m.worked ? s + m.fees : s), 0),
-    bonus: months.reduce((s, m) => (m.worked ? s + m.bonus : s), 0),
+    gross: months.reduce((s, m) => (countsInTotals(m) ? s + m.gross : s), 0),
+    net: months.reduce((s, m) => (countsInTotals(m) ? s + m.effectiveNet : s), 0),
+    tax: months.reduce((s, m) => (countsInTotals(m) ? s + m.tax : s), 0),
+    pension: months.reduce((s, m) => (countsInTotals(m) ? s + m.pension : s), 0),
+    fees: months.reduce((s, m) => (countsInTotals(m) ? s + m.fees : s), 0),
+    bonus: months.reduce((s, m) => (countsInTotals(m) ? s + m.bonus : s), 0),
     workedMonths: months.filter((m) => m.worked && m.exists).length,
-    stoppedMonths: months.filter((m) => !m.worked).length,
-    paidMonths: months.filter((m) => m.paid).length,
+    stoppedMonths: months.filter((m) => !m.worked && m.exists).length,
+    paidMonths: months.filter((m) => m.paid && m.exists).length,
   };
 
   return {
@@ -1052,6 +1056,118 @@ export async function listSavings(userId: string) {
     where: { userId },
     orderBy: { createdAt: "desc" },
   });
+}
+
+export async function getSavingsSummary(userId: string) {
+  const [plans, assets] = await Promise.all([
+    prisma.savingsPlan.findMany({
+      where: { userId },
+      include: { entries: true },
+      orderBy: { createdAt: "desc" },
+    }),
+    prisma.savingsAsset.findMany({
+      where: { userId },
+      orderBy: [{ kind: "asc" }, { createdAt: "asc" }],
+    }),
+  ]);
+
+  let jamiyaPaidTotal = 0;
+  let committedTotal = 0;
+  let monthlyThisMonth = 0;
+  let activePlans = 0;
+
+  const planProgress = plans.map((plan) => {
+    const monthly = decimalToNumber(plan.monthlyContribution);
+    const target = plan.targetAmount ? decimalToNumber(plan.targetAmount) : null;
+    const paid = plan.entries
+      .filter((e) => e.paid)
+      .reduce((sum, e) => sum + decimalToNumber(e.amount), 0);
+
+    jamiyaPaidTotal += paid;
+
+    if (plan.status === "ACTIVE") {
+      activePlans++;
+      monthlyThisMonth += monthly;
+      if (target) committedTotal += target;
+    }
+
+    const planTarget = target ?? 0;
+    return {
+      id: plan.id,
+      title: plan.title,
+      type: plan.type,
+      status: plan.status,
+      monthlyContribution: monthly,
+      paid,
+      target: planTarget,
+      remaining: planTarget > 0 ? Math.max(0, planTarget - paid) : 0,
+      progress:
+        planTarget > 0 ? Math.min(100, Math.round((paid / planTarget) * 100)) : 0,
+    };
+  });
+
+  const assetItems = assets.map((asset) => ({
+    id: asset.id,
+    kind: asset.kind as "GOLD" | "USD",
+    title: asset.title,
+    quantity: decimalToNumber(asset.quantity),
+    unitPrice: decimalToNumber(asset.unitPrice),
+    priceCurrency: asset.priceCurrency,
+    valueIls: decimalToNumber(asset.valueIls),
+    updatedAt: asset.updatedAt.toISOString().slice(0, 10),
+  }));
+
+  const goldTotal = assetItems
+    .filter((a) => a.kind === "GOLD")
+    .reduce((sum, a) => sum + a.valueIls, 0);
+  const usdTotal = assetItems
+    .filter((a) => a.kind === "USD")
+    .reduce((sum, a) => sum + a.valueIls, 0);
+  const assetsTotal = goldTotal + usdTotal;
+  const accumulatedTotal = jamiyaPaidTotal + assetsTotal;
+  const remainingToPay = Math.max(0, committedTotal - jamiyaPaidTotal);
+
+  const portfolioChart = [
+    ...(jamiyaPaidTotal > 0
+      ? [{ name: "جمعيات (مدفوع)", value: jamiyaPaidTotal, fill: "#6366f1" }]
+      : []),
+    ...(goldTotal > 0 ? [{ name: "ذهب", value: goldTotal, fill: "#f59e0b" }] : []),
+    ...(usdTotal > 0 ? [{ name: "دولار", value: usdTotal, fill: "#059669" }] : []),
+  ];
+
+  const commitmentChart = [
+    ...(jamiyaPaidTotal > 0
+      ? [{ name: "مدفوع", value: jamiyaPaidTotal, fill: "#6366f1" }]
+      : []),
+    ...(remainingToPay > 0
+      ? [{ name: "متبقي", value: remainingToPay, fill: "#fca5a5" }]
+      : []),
+  ];
+
+  return {
+    summary: {
+      monthlyThisMonth,
+      accumulatedTotal,
+      committedTotal,
+      remainingToPay,
+      activePlans,
+      jamiyaPaidTotal,
+      assetsTotal,
+      goldTotal,
+      usdTotal,
+    },
+    planProgress,
+    assets: assetItems,
+    charts: {
+      portfolio: portfolioChart,
+      commitment: commitmentChart,
+      plans: planProgress.map((p) => ({
+        name: p.title.length > 14 ? `${p.title.slice(0, 14)}…` : p.title,
+        paid: p.paid,
+        remaining: p.remaining,
+      })),
+    },
+  };
 }
 
 export async function getSavingsPlanDetail(userId: string, planId: string) {

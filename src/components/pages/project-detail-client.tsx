@@ -361,14 +361,14 @@ export function ProjectDetailClient({
               </div>
             </div>
             <BuildingPaymentSheet
-            projectId={detail.id}
-            projectTitle={detail.title}
-            paymentMethods={paymentMethods}
-            defaultTotal={detail.remaining > 0 ? detail.remaining : detail.totalBudget}
-            defaultPayee={plan?.payeeName ?? detail.title}
-            existingPlan={plan}
-            triggerLabel={plan ? "تعديل خطة الدفع" : "إنشاء خطة دفع"}
-          />
+              projectId={detail.id}
+              projectTitle={detail.title}
+              paymentMethods={paymentMethods}
+              defaultTotal={detail.remaining > 0 ? detail.remaining : detail.totalBudget}
+              defaultPayee={plan?.payeeName ?? detail.title}
+              existingPlan={plan}
+              triggerLabel={plan ? "تعديل خطة الدفع" : "إنشاء خطة دفع"}
+            />
           </div>
         </div>
 

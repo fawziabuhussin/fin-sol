@@ -11,6 +11,18 @@ export function yearRangeUTC(year: number) {
   return { start, end };
 }
 
+/** Format a @db.Date value for display (UTC calendar date). */
+export function formatUtcDate(d: Date | string) {
+  const date =
+    typeof d === "string"
+      ? new Date(d.includes("T") ? d : `${d}T00:00:00.000Z`)
+      : d;
+  const y = date.getUTCFullYear();
+  const m = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(date.getUTCDate()).padStart(2, "0");
+  return `${day}.${m}.${y}`;
+}
+
 /** Extract calendar month (1-12) from a UTC date column. */
 export function utcMonth(d: Date) {
   return d.getUTCMonth() + 1;

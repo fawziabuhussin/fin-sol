@@ -26,3 +26,16 @@ export const savingsEntrySchema = z.object({
 });
 
 export type SavingsEntryInput = z.infer<typeof savingsEntrySchema>;
+
+export const savingsAssetSchema = z.object({
+  kind: z.enum(["GOLD", "USD"]),
+  title: z.string().min(1).max(120),
+  quantity: z.coerce.number().min(0),
+  unitPrice: z.coerce.number().min(0),
+  priceCurrency: z.enum(["ILS", "USD"]).default("ILS"),
+  notes: z.string().max(300).optional().or(z.literal("")),
+});
+
+export const savingsAssetPatchSchema = savingsAssetSchema.partial();
+
+export type SavingsAssetInput = z.infer<typeof savingsAssetSchema>;

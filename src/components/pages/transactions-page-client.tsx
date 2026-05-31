@@ -16,7 +16,7 @@ import {
 import { DataTable } from "@/components/tables/data-table";
 import { RowActions } from "@/components/tables/row-actions";
 import { TransactionSheet } from "@/components/forms/transaction-sheet";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
@@ -28,6 +28,7 @@ type TransactionRow = {
   type: "INCOME" | "EXPENSE" | "TRANSFER" | "SAVINGS_CONTRIBUTION";
   amount: number;
   occurredAt: string;
+  occurredAtLabel: string;
   description: string | null;
   notes: string | null;
   categoryId: string | null;
@@ -44,18 +45,10 @@ type Option = { id: string; name: string };
 type Filters = {
   year: number;
   month: number | "all";
-  type: string;
-  category: string;
+  expenseCategory: string;
   project: string;
   method: string;
   q: string;
-};
-
-const TYPE_META: Record<TransactionRow["type"], { label: string; cls: string }> = {
-  INCOME: { label: "دخل", cls: "bg-emerald-50 text-emerald-700" },
-  EXPENSE: { label: "مصروف", cls: "bg-rose-50 text-rose-700" },
-  SAVINGS_CONTRIBUTION: { label: "ادخار", cls: "bg-indigo-50 text-indigo-700" },
-  TRANSFER: { label: "تحويل", cls: "bg-slate-100 text-slate-700" },
 };
 
 export function TransactionsPageClient({
@@ -68,6 +61,7 @@ export function TransactionsPageClient({
   data: TransactionRow[];
   lookups: {
     categories: Option[];
+    expenseCategories: Option[];
     projects: Option[];
     payees: Option[];
     paymentMethods: Option[];
@@ -79,6 +73,7 @@ export function TransactionsPageClient({
   const router = useRouter();
   const [sheetOpen, setSheetOpen] = useState(false);
   const [editing, setEditing] = useState<TransactionRow | null>(null);
+  const [defaultType, setDefaultType] = useState<"INCOME" | "EXPENSE">("EXPENSE");
   const [q, setQ] = useState(filters.q);
   const [isPending, startTransition] = useTransition();
 
@@ -87,8 +82,9 @@ export function TransactionsPageClient({
     const sp = new URLSearchParams();
     sp.set("year", String(m.year));
     sp.set("month", m.month === "all" ? "all" : String(m.month));
-    if (m.type && m.type !== "all") sp.set("type", m.type);
-    if (m.category && m.category !== "all") sp.set("category", m.category);
+    if (m.expenseCategory && m.expenseCategory !== "all") {
+      sp.set("expenseCategory", m.expenseCategory);
+    }
     if (m.project && m.project !== "all") sp.set("project", m.project);
     if (m.method && m.method !== "all") sp.set("method", m.method);
     if (m.q) sp.set("q", m.q);
@@ -120,10 +116,23 @@ export function TransactionsPageClient({
 
   const net = summary.income - summary.expense;
 
-  const columns = useMemo<ColumnDef<TransactionRow>[]>(
+  const incomeRows = useMemo(
+    () => data.filter((row) => row.type === "INCOME"),
+    [data]
+  );
+
+  const expenseRows = useMemo(() => {
+    const rows = data.filter(
+      (row) => row.type === "EXPENSE" || row.type === "SAVINGS_CONTRIBUTION"
+    );
+    if (filters.expenseCategory === "all") return rows;
+    return rows.filter((row) => row.categoryId === filters.expenseCategory);
+  }, [data, filters.expenseCategory]);
+
+  const incomeColumns = useMemo<ColumnDef<TransactionRow>[]>(
     () => [
       {
-        accessorKey: "occurredAt",
+        accessorKey: "occurredAtLabel",
         header: ({ column }) => (
           <button
             className="flex items-center gap-1"
@@ -132,18 +141,6 @@ export function TransactionsPageClient({
             التاريخ <ArrowUpDown className="h-3 w-3" />
           </button>
         ),
-      },
-      {
-        accessorKey: "type",
-        header: "النوع",
-        cell: ({ row }) => {
-          const meta = TYPE_META[row.original.type];
-          return (
-            <span className={cn("rounded-full px-2.5 py-0.5 text-xs font-semibold", meta.cls)}>
-              {meta.label}
-            </span>
-          );
-        },
       },
       {
         accessorKey: "amount",
@@ -155,53 +152,103 @@ export function TransactionsPageClient({
             المبلغ <ArrowUpDown className="h-3 w-3" />
           </button>
         ),
-        cell: ({ row }) => {
-          const t = row.original.type;
-          const sign = t === "INCOME" ? "+" : t === "EXPENSE" ? "−" : "";
-          return (
-            <span
-              className={cn(
-                "font-bold",
-                t === "INCOME" && "text-emerald-700",
-                t === "EXPENSE" && "text-rose-700",
-                t === "SAVINGS_CONTRIBUTION" && "text-indigo-700"
-              )}
-            >
-              {sign}
-              {formatCurrency(row.original.amount)}
-            </span>
-          );
-        },
+        cell: ({ row }) => (
+          <span className="font-bold text-emerald-700">
+            +{formatCurrency(row.original.amount)}
+          </span>
+        ),
       },
+      { accessorKey: "description", header: "المصدر" },
       { accessorKey: "categoryName", header: "الفئة" },
-      { accessorKey: "projectName", header: "المشروع" },
       { accessorKey: "paymentMethodName", header: "الدفع" },
-      { accessorKey: "description", header: "الوصف" },
       {
         id: "actions",
         header: "",
         cell: ({ row }) => (
           <RowActions
-            onEdit={() => {
-              setEditing(row.original);
-              setSheetOpen(true);
-            }}
-            onDelete={() => {
-              startTransition(async () => {
-                await fetch(`/api/transactions/${row.original.id}`, { method: "DELETE" });
-                router.refresh();
-              });
-            }}
+            onEdit={() => openEdit(row.original)}
+            onDelete={() => deleteRow(row.original.id)}
           />
         ),
       },
     ],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [router]
   );
 
+  const expenseColumns = useMemo<ColumnDef<TransactionRow>[]>(
+    () => [
+      {
+        accessorKey: "occurredAtLabel",
+        header: ({ column }) => (
+          <button
+            className="flex items-center gap-1"
+            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+          >
+            التاريخ <ArrowUpDown className="h-3 w-3" />
+          </button>
+        ),
+      },
+      {
+        accessorKey: "amount",
+        header: ({ column }) => (
+          <button
+            className="flex items-center gap-1"
+            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+          >
+            المبلغ <ArrowUpDown className="h-3 w-3" />
+          </button>
+        ),
+        cell: ({ row }) => (
+          <span
+            className={cn(
+              "font-bold",
+              row.original.type === "EXPENSE" ? "text-rose-700" : "text-indigo-700"
+            )}
+          >
+            −{formatCurrency(row.original.amount)}
+          </span>
+        ),
+      },
+      { accessorKey: "categoryName", header: "الفئة" },
+      { accessorKey: "projectName", header: "المشروع" },
+      { accessorKey: "description", header: "الوصف" },
+      { accessorKey: "paymentMethodName", header: "الدفع" },
+      {
+        id: "actions",
+        header: "",
+        cell: ({ row }) => (
+          <RowActions
+            onEdit={() => openEdit(row.original)}
+            onDelete={() => deleteRow(row.original.id)}
+          />
+        ),
+      },
+    ],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [router]
+  );
+
+  const openEdit = (row: TransactionRow) => {
+    setEditing(row);
+    setSheetOpen(true);
+  };
+
+  const deleteRow = (id: string) => {
+    startTransition(async () => {
+      await fetch(`/api/transactions/${id}`, { method: "DELETE" });
+      router.refresh();
+    });
+  };
+
+  const openAdd = (type: "INCOME" | "EXPENSE") => {
+    setDefaultType(type);
+    setEditing(null);
+    setSheetOpen(true);
+  };
+
   return (
     <div className="space-y-4">
-      {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-xl font-extrabold text-slate-900 sm:text-2xl">المعاملات</h1>
@@ -209,19 +256,18 @@ export function TransactionsPageClient({
             {periodLabel} · {total} معاملة
           </p>
         </div>
-        <Button
-          onClick={() => {
-            setEditing(null);
-            setSheetOpen(true);
-          }}
-          className="gap-2 self-start sm:self-auto"
-        >
-          <Plus className="h-4 w-4" />
-          إضافة معاملة
-        </Button>
+        <div className="flex flex-wrap gap-2 self-start sm:self-auto">
+          <Button variant="outline" onClick={() => openAdd("INCOME")} className="gap-2">
+            <Plus className="h-4 w-4" />
+            إضافة دخل
+          </Button>
+          <Button onClick={() => openAdd("EXPENSE")} className="gap-2">
+            <Plus className="h-4 w-4" />
+            إضافة مصروف
+          </Button>
+        </div>
       </div>
 
-      {/* Summary cards */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <SummaryCard
           icon={<ArrowUpCircle className="h-5 w-5" />}
@@ -250,10 +296,8 @@ export function TransactionsPageClient({
         />
       </div>
 
-      {/* Filters */}
       <Card>
         <CardContent className="space-y-3 p-4">
-          {/* Month navigation */}
           <div className="flex flex-wrap items-center gap-2">
             <div className="flex items-center gap-1 rounded-xl border border-slate-200 bg-white p-1">
               <button
@@ -294,28 +338,12 @@ export function TransactionsPageClient({
             </button>
           </div>
 
-          {/* Dropdown filters */}
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
-            <Select value={filters.type} onChange={(e) => apply({ type: e.target.value })}>
-              <option value="all">كل الأنواع</option>
-              <option value="INCOME">دخل</option>
-              <option value="EXPENSE">مصروف</option>
-              <option value="SAVINGS_CONTRIBUTION">ادخار</option>
-              <option value="TRANSFER">تحويل</option>
-            </Select>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
             <Select value={filters.project} onChange={(e) => apply({ project: e.target.value })}>
               <option value="all">كل المشاريع</option>
               {lookups.projects.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.name}
-                </option>
-              ))}
-            </Select>
-            <Select value={filters.category} onChange={(e) => apply({ category: e.target.value })}>
-              <option value="all">كل الفئات</option>
-              {lookups.categories.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
                 </option>
               ))}
             </Select>
@@ -329,7 +357,6 @@ export function TransactionsPageClient({
             </Select>
           </div>
 
-          {/* Search */}
           <form
             onSubmit={(e) => {
               e.preventDefault();
@@ -348,15 +375,70 @@ export function TransactionsPageClient({
         </CardContent>
       </Card>
 
-      {/* Table */}
+      {/* Income table */}
       <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="flex items-center gap-2 text-base text-emerald-700">
+            <ArrowUpCircle className="h-5 w-5" />
+            الدخل ({incomeRows.length})
+          </CardTitle>
+        </CardHeader>
         <CardContent className="p-2 sm:p-4">
-          {data.length === 0 ? (
-            <div className="p-10 text-center text-sm text-slate-500">
-              لا توجد معاملات لهذه الفترة.
+          {incomeRows.length === 0 ? (
+            <div className="p-8 text-center text-sm text-slate-500">
+              لا يوجد دخل لهذه الفترة.
             </div>
           ) : (
-            <DataTable columns={columns} data={data} />
+            <DataTable columns={incomeColumns} data={incomeRows} />
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Expense table */}
+      <Card>
+        <CardHeader className="space-y-3 pb-2">
+          <CardTitle className="flex items-center gap-2 text-base text-rose-700">
+            <ArrowDownCircle className="h-5 w-5" />
+            المصروفات ({expenseRows.length})
+          </CardTitle>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => apply({ expenseCategory: "all" })}
+              className={cn(
+                "rounded-full border px-3 py-1 text-xs font-semibold transition-all",
+                filters.expenseCategory === "all"
+                  ? "border-rose-500 bg-rose-50 text-rose-700"
+                  : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+              )}
+            >
+              كل الفئات
+            </button>
+            {lookups.expenseCategories.map((cat) => (
+              <button
+                key={cat.id}
+                type="button"
+                onClick={() => apply({ expenseCategory: cat.id })}
+                className={cn(
+                  "rounded-full border px-3 py-1 text-xs font-semibold transition-all",
+                  filters.expenseCategory === cat.id
+                    ? "border-rose-500 bg-rose-50 text-rose-700"
+                    : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+                )}
+              >
+                {cat.name}
+              </button>
+            ))}
+          </div>
+        </CardHeader>
+        <CardContent className="p-2 sm:p-4">
+          {expenseRows.length === 0 ? (
+            <div className="p-8 text-center text-sm text-slate-500">
+              لا توجد مصروفات لهذه الفترة
+              {filters.expenseCategory !== "all" ? " في هذه الفئة." : "."}
+            </div>
+          ) : (
+            <DataTable columns={expenseColumns} data={expenseRows} />
           )}
         </CardContent>
       </Card>
@@ -379,7 +461,7 @@ export function TransactionsPageClient({
                 paymentMethodId: editing.paymentMethodId ?? "",
                 currency: "ILS",
               }
-            : undefined
+            : { type: defaultType }
         }
         lookups={lookups}
       />

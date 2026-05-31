@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" fill="none">
+  <defs>
+    <linearGradient id="goldGrad" x1="20" y1="10" x2="100" y2="110" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FDE68A"/>
+      <stop offset="0.5" stop-color="#F59E0B"/>
+      <stop offset="1" stop-color="#B45309"/>
+    </linearGradient>
+    <linearGradient id="goldShine" x1="40" y1="20" x2="80" y2="60" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFBEB" stop-opacity="0.9"/>
+      <stop offset="1" stop-color="#FFFBEB" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <circle cx="60" cy="60" r="52" fill="url(#goldGrad)" stroke="#92400E" stroke-width="2"/>
+  <ellipse cx="48" cy="42" rx="22" ry="14" fill="url(#goldShine)"/>
+  <text x="60" y="68" text-anchor="middle" font-size="28" font-weight="800" fill="#78350F" font-family="system-ui,sans-serif">ª</text>
+</svg>

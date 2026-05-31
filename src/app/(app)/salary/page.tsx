@@ -13,8 +13,15 @@ export default async function SalaryPage() {
   const employerStats = employers.map((emp) => {
     const empSlips = slips.filter((s) => s.employerId === emp.id);
     const ytdNet = empSlips
-      .filter((s) => s.periodYear === 2026)
-      .reduce((sum, s) => sum + decimalToNumber(s.net), 0);
+      .filter((s) => s.periodYear === 2026 && s.paid && s.worked)
+      .reduce(
+        (sum, s) =>
+          sum +
+          decimalToNumber(s.net) +
+          decimalToNumber(s.bonus) -
+          decimalToNumber(s.fees),
+        0
+      );
     return {
       id: emp.id,
       name: emp.name,

@@ -1,7 +1,9 @@
 import { requireUser } from "@/lib/session";
 import { getLookups, listTransactions } from "@/lib/tenant-data";
+import { formatUtcDate } from "@/lib/dates";
 import { decimalToNumber, parseIntSafe } from "@/lib/utils";
 import { TransactionsPageClient } from "@/components/pages/transactions-page-client";
+import { CategoryKind } from "@/generated/prisma/client";
 
 export default async function TransactionsPage({
   searchParams,
@@ -11,8 +13,7 @@ export default async function TransactionsPage({
     page?: string;
     year?: string;
     month?: string;
-    type?: string;
-    category?: string;
+    expenseCategory?: string;
     project?: string;
     method?: string;
   }>;
@@ -27,8 +28,6 @@ export default async function TransactionsPage({
 
   const page = parseIntSafe(params.page, 1);
   const q = params.q ?? "";
-  const type = params.type && params.type !== "all" ? params.type : undefined;
-  const categoryId = params.category && params.category !== "all" ? params.category : undefined;
   const projectId = params.project && params.project !== "all" ? params.project : undefined;
   const paymentMethodId = params.method && params.method !== "all" ? params.method : undefined;
 
@@ -40,21 +39,22 @@ export default async function TransactionsPage({
       q,
       year,
       month,
-      type,
-      categoryId,
       projectId,
       paymentMethodId,
     }),
     getLookups(user.id),
   ]);
 
+  const expenseCategories = lookups.categories
+    .filter((c) => c.kind === CategoryKind.EXPENSE || c.kind === CategoryKind.SAVINGS)
+    .map((x) => ({ id: x.id, name: x.name }));
+
   return (
     <TransactionsPageClient
       filters={{
         year,
         month: month ?? "all",
-        type: params.type ?? "all",
-        category: params.category ?? "all",
+        expenseCategory: params.expenseCategory ?? "all",
         project: params.project ?? "all",
         method: params.method ?? "all",
         q,
@@ -63,6 +63,7 @@ export default async function TransactionsPage({
       total={total}
       lookups={{
         categories: lookups.categories.map((x) => ({ id: x.id, name: x.name })),
+        expenseCategories,
         projects: lookups.projects.map((x) => ({ id: x.id, name: x.title })),
         payees: lookups.payees.map((x) => ({ id: x.id, name: x.name })),
         paymentMethods: lookups.paymentMethods.map((x) => ({ id: x.id, name: x.name })),
@@ -72,6 +73,7 @@ export default async function TransactionsPage({
         type: item.type,
         amount: decimalToNumber(item.amount),
         occurredAt: item.occurredAt.toISOString().slice(0, 10),
+        occurredAtLabel: formatUtcDate(item.occurredAt),
         description: item.description,
         notes: item.notes,
         categoryId: item.categoryId,

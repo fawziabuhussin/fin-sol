@@ -15,6 +15,7 @@ import {
   ProjectKind,
   SavingsPlanType,
   SavingsPlanStatus,
+  SavingsAssetKind,
 } from "../src/generated/prisma/client";
 import { INCOME_SOURCES } from "../src/lib/finance-labels";
 import {
@@ -43,7 +44,7 @@ function parseDate(val: unknown): Date | null {
   if (val instanceof Date) return val;
   if (typeof val === "number") {
     const d = XLSX.SSF.parse_date_code(val);
-    if (d) return new Date(d.y, d.m - 1, d.d);
+    if (d) return new Date(Date.UTC(d.y, d.m - 1, d.d));
   }
   if (typeof val === "string" && val.trim()) {
     const d = new Date(val);
@@ -281,6 +282,7 @@ async function clearUserData(prisma: PrismaClient, userId: string) {
   await prisma.projectPaymentPlan.deleteMany({ where: { userId } });
   await prisma.transaction.deleteMany({ where: { userId } });
   await prisma.salarySlip.deleteMany({ where: { userId } });
+  await prisma.savingsAsset.deleteMany({ where: { userId } });
   await prisma.savingsPlan.deleteMany({ where: { userId } });
   await prisma.project.deleteMany({ where: { userId } });
   await prisma.payee.deleteMany({ where: { userId } });
@@ -565,6 +567,60 @@ async function importSavings(prisma: PrismaClient, userId: string, wb: XLSX.Work
   console.log(`Savings plans imported: ${count}`);
 }
 
+async function importSavingsAssets(
+  prisma: PrismaClient,
+  userId: string,
+  wb: XLSX.WorkBook
+) {
+  const sheet = wb.Sheets["الادخارات"];
+  if (!sheet) return;
+
+  const rows = XLSX.utils.sheet_to_json(sheet, {
+    header: 1,
+    defval: null,
+  }) as unknown[][];
+  const headerIdx = rows.findIndex(
+    (r) => Array.isArray(r) && r[1] === "النوع" && r[2] === "التفاصيل"
+  );
+  if (headerIdx < 0) return;
+
+  await prisma.savingsAsset.deleteMany({ where: { userId } });
+
+  let count = 0;
+  for (let i = headerIdx + 1; i < rows.length; i++) {
+    const row = rows[i] as unknown[];
+    const typeLabel = row[1];
+    const title = row[2];
+    if (typeof typeLabel !== "string" || typeof title !== "string") continue;
+    if (typeLabel.includes("إجمالي")) break;
+
+    const quantity = num(row[3]);
+    const unitPrice = num(row[4]);
+    const valueIls = num(row[6]);
+    if (quantity <= 0 || valueIls <= 0) continue;
+
+    const kind = typeLabel.includes("ذهب")
+      ? SavingsAssetKind.GOLD
+      : SavingsAssetKind.USD;
+    const priceCurrency =
+      typeof row[5] === "string" && row[5].includes("$") ? "USD" : "ILS";
+
+    await prisma.savingsAsset.create({
+      data: {
+        userId,
+        kind,
+        title: title.trim(),
+        quantity,
+        unitPrice,
+        priceCurrency,
+        valueIls,
+      },
+    });
+    count++;
+  }
+  console.log(`Savings assets imported: ${count}`);
+}
+
 const ANNUAL_INCOME_SOURCES = [
   { name: "أفق", index: 2 },
   { name: "انطلاقة", index: 3 },
@@ -613,9 +669,8 @@ async function importAnnualIncome(
     const periodMonth = MONTH_NAMES[monthLabel.trim()];
     if (!periodMonth) continue;
 
-    const occurredAt =
-      parseDate(row[0]) ?? new Date(2026, periodMonth - 1, 1);
-    const periodYear = occurredAt.getFullYear();
+    const periodYear = 2026;
+    const occurredAt = new Date(Date.UTC(periodYear, periodMonth - 1, 1));
 
     for (const src of ANNUAL_INCOME_SOURCES) {
       const amount = num(row[src.index]);
@@ -642,30 +697,29 @@ async function importAnnualIncome(
       });
       incomeCount++;
 
-      if (src.isSalary) {
-        const employer = employers[src.name];
-        if (employer) {
-          await prisma.salarySlip.upsert({
-            where: {
-              userId_employerId_periodYear_periodMonth: {
-                userId,
-                employerId: employer.id,
-                periodYear,
-                periodMonth,
-              },
-            },
-            create: {
+      const employer = employers[src.name];
+      if (employer) {
+        await prisma.salarySlip.upsert({
+          where: {
+            userId_employerId_periodYear_periodMonth: {
               userId,
               employerId: employer.id,
               periodYear,
               periodMonth,
-              gross: amount,
-              net: amount,
             },
-            update: { gross: amount, net: amount },
-          });
-          salaryCount++;
-        }
+          },
+          create: {
+            userId,
+            employerId: employer.id,
+            periodYear,
+            periodMonth,
+            gross: amount,
+            net: amount,
+            paid: false,
+          },
+          update: { gross: amount, net: amount },
+        });
+        salaryCount++;
       }
     }
   }
@@ -779,6 +833,7 @@ async function main() {
   await importTransactions(prisma, user.id, wb, buildProjectId);
   await importAnnualIncome(prisma, user.id, wb, employers);
   await importSavings(prisma, user.id, wb);
+  await importSavingsAssets(prisma, user.id, wb);
   await importSalary(prisma, user.id, wb, employers);
 
   console.log("\nDone!");

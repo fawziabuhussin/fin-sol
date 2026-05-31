@@ -253,8 +253,8 @@ export function EmployerDetailClient({ detail }: { detail: EmployerDetail }) {
 
         <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
           {[
-            { label: "صافي السنة", value: detail.totals.net, color: "text-emerald-700" },
-            { label: "إجمالي السنة", value: detail.totals.gross, color: "text-slate-900" },
+            { label: "صافي المقبوض", value: detail.totals.net, color: "text-emerald-700" },
+            { label: "إجمالي المقبوض", value: detail.totals.gross, color: "text-slate-900" },
             {
               label: "أشهر عمل",
               value: `${detail.totals.workedMonths}`,
