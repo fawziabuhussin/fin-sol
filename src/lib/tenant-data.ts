@@ -568,7 +568,11 @@ export async function getBuildingProjectSummary(
       children: {
         include: {
           transactions: { where: { type: TransactionType.EXPENSE } },
-          paymentPlans: { include: { installments: true } },
+          paymentPlans: {
+            orderBy: { createdAt: "desc" },
+            take: 1,
+            include: { installments: true },
+          },
         },
         orderBy: { createdAt: "asc" },
       },
@@ -600,9 +604,9 @@ export async function getBuildingProjectSummary(
       (sum, t) => sum + decimalToNumber(t.amount),
       0
     );
-    const pendingInstallments = child.paymentPlans.flatMap((p) =>
-      p.installments.filter((i) => i.status === "PENDING")
-    );
+    const activePlan = child.paymentPlans[0];
+    const pendingInstallments =
+      activePlan?.installments.filter((i) => i.status === "PENDING") ?? [];
     return {
       id: child.id,
       title: child.title,
@@ -618,22 +622,22 @@ export async function getBuildingProjectSummary(
 
   const upcomingInstallments = master.children
     .filter((child) => child.status !== "PLANNED" && child.status !== "CANCELLED")
-    .flatMap((child) =>
-      child.paymentPlans.flatMap((plan) =>
-        plan.installments
-          .filter((i) => i.status === "PENDING")
-          .map((inst) => ({
-            id: inst.id,
-            contractorId: child.id,
-            contractorName: child.title,
-            profession: child.profession,
-            sequence: inst.sequence,
-            label: inst.label ?? `الدفعة ${inst.sequence}`,
-            dueDate: inst.dueDate.toISOString().slice(0, 10),
-            amount: decimalToNumber(inst.amount),
-          }))
-      )
-    )
+    .flatMap((child) => {
+      const plan = child.paymentPlans[0];
+      if (!plan) return [];
+      return plan.installments
+        .filter((i) => i.status === "PENDING")
+        .map((inst) => ({
+          id: inst.id,
+          contractorId: child.id,
+          contractorName: child.title,
+          profession: child.profession,
+          sequence: inst.sequence,
+          label: inst.label ?? `الدفعة ${inst.sequence}`,
+          dueDate: inst.dueDate.toISOString().slice(0, 10),
+          amount: decimalToNumber(inst.amount),
+        }));
+    })
     .sort((a, b) => a.dueDate.localeCompare(b.dueDate));
 
   return {
