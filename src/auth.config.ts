@@ -11,8 +11,17 @@ export const authConfig = {
       const path = request.nextUrl.pathname;
       const isProtected =
         path.startsWith("/dashboard") ||
-        path.startsWith("/api/insights") ||
-        path.startsWith("/api/dashboard");
+        path.startsWith("/transactions") ||
+        path.startsWith("/projects") ||
+        path.startsWith("/savings") ||
+        path.startsWith("/salary") ||
+        path.startsWith("/settings") ||
+        path.startsWith("/search") ||
+        path.startsWith("/api/transactions") ||
+        path.startsWith("/api/projects") ||
+        path.startsWith("/api/quick-add") ||
+        path.startsWith("/api/savings") ||
+        path.startsWith("/api/salary");
       const isAuthPage =
         path.startsWith("/login") || path.startsWith("/register");
 
@@ -22,20 +31,16 @@ export const authConfig = {
       }
       return true;
     },
-    async jwt({ token, user, trigger, session }) {
+    async jwt({ token, user }) {
       if (user?.id) {
         token.id = user.id;
-      }
-      if (trigger === "update" && session?.activeHouseholdId) {
-        token.activeHouseholdId = session.activeHouseholdId as string;
+        token.email = user.email;
       }
       return token;
     },
     async session({ session, token }) {
       if (session.user && token.id) {
         session.user.id = token.id as string;
-        session.user.activeHouseholdId =
-          (token.activeHouseholdId as string | null) ?? null;
       }
       return session;
     },

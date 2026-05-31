@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="200" viewBox="0 0 800 200" fill="none">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="800" y2="200" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#1e3a5f"/>
+      <stop offset="1" stop-color="#6366f1"/>
+    </linearGradient>
+  </defs>
+  <rect width="800" height="200" rx="24" fill="url(#g)"/>
+  <text x="400" y="110" text-anchor="middle" fill="white" font-size="32" font-family="sans-serif">Building Project</text>
+</svg>

@@ -35,7 +35,7 @@ npm run db:push
 npm run import:excel -- "/path/to/9686F4E.xlsx" your@email.com
 ```
 
-Default demo user after import: `demo@fin-sol.local` / `demo1234`
+After import, data is linked to `foze820@gmail.com` (or pass a third argument to `import:excel`).
 
 5. Run dev server:
 

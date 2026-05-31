@@ -1,20 +1,23 @@
-import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import type { Metadata, Viewport } from "next";
+import { Tajawal } from "next/font/google";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
+const tajawal = Tajawal({
+  variable: "--font-tajawal",
+  subsets: ["arabic", "latin"],
+  weight: ["400", "500", "700", "800"],
 });
 
 export const metadata: Metadata = {
-  title: "المالية الذكية | Smart Financial OS",
-  description: "نظام مالي ذكي للتدفق النقدي والبناء والادخار",
+  title: "Fin$ol — المالية الذكية",
+  description: "منصة مالية ذكية متعددة المستأجرين",
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({
@@ -23,12 +26,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html
-      lang="ar"
-      dir="rtl"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
-    >
-      <body className="min-h-full bg-[#F8F9FA] text-gray-900">{children}</body>
+    <html lang="ar" dir="rtl" className={`${tajawal.variable} h-full antialiased`}>
+      <body className="min-h-full overflow-x-hidden bg-[#F8FAFC] text-slate-900">{children}</body>
     </html>
   );
 }

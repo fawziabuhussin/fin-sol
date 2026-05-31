@@ -7,22 +7,28 @@ datasource db {
   provider = "postgresql"
 }
 
-// ─── Auth (NextAuth) ──────────────────────────────────────────
-
 model User {
-  id                String             @id @default(cuid())
-  email             String             @unique
-  emailVerified     DateTime?
-  name              String?
-  passwordHash      String?
-  image             String?
-  locale            String             @default("ar")
-  createdAt         DateTime           @default(now())
-  updatedAt         DateTime           @updatedAt
-  accounts          Account[]
-  sessions          Session[]
-  memberships       HouseholdMember[]
-  dismissedInsights InsightDismissal[]
+  id            String   @id @default(cuid())
+  name          String?
+  email         String   @unique
+  emailVerified DateTime?
+  image         String?
+  passwordHash  String?
+  locale        String   @default("ar")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  accounts        Account[]
+  sessions        Session[]
+  projects        Project[]
+  transactions    Transaction[]
+  savingsPlans    SavingsPlan[]
+  salarySlips     SalarySlip[]
+  employers       Employer[]
+  categories      Category[]
+  payees          Payee[]
+  paymentMethods  PaymentMethod[]
+  paymentPlans    ProjectPaymentPlan[]
 }
 
 model Account {
@@ -41,6 +47,7 @@ model Account {
   user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerAccountId])
+  @@index([userId])
 }
 
 model Session {
@@ -49,6 +56,8 @@ model Session {
   userId       String
   expires      DateTime
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 model VerificationToken {
@@ -59,204 +68,129 @@ model VerificationToken {
   @@unique([identifier, token])
 }
 
-// ─── Tenancy ──────────────────────────────────────────────────
-
-enum HouseholdRole {
-  OWNER
-  MEMBER
-  VIEWER
+enum ProjectStatus {
+  PLANNED
+  ACTIVE
+  ON_HOLD
+  COMPLETED
+  CANCELLED
 }
 
-model Household {
-  id               String                @id @default(cuid())
-  name             String
-  currency         String                @default("ILS")
-  createdAt        DateTime              @default(now())
-  updatedAt        DateTime              @updatedAt
-  members          HouseholdMember[]
-  categories       Category[]
-  paymentMethods   PaymentMethod[]
-  incomeSources    IncomeSource[]
-  transactions     Transaction[]
-  buildContractors BuildContractor[]
-  buildPayments    BuildPayment[]
-  savingsPlans     SavingsPlan[]
-  salarySlips      SalarySlip[]
-  monthlySnapshots MonthlySnapshot[]
-  insights         Insight[]
-  buildProject     BuildProject?
-  kerenProfile     KerenHishtalmutProfile?
+enum ProjectKind {
+  MASTER_BUILD
+  BUILD_CONTRACTOR
+  GENERAL
 }
 
-model HouseholdMember {
-  id          String        @id @default(cuid())
-  householdId String
-  userId      String
-  role        HouseholdRole @default(MEMBER)
-  joinedAt    DateTime      @default(now())
-  household   Household     @relation(fields: [householdId], references: [id], onDelete: Cascade)
-  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+model Project {
+  id              String        @id @default(cuid())
+  userId          String
+  parentProjectId String?
+  kind            ProjectKind   @default(GENERAL)
+  title           String
+  profession      String?
+  description     String?
+  totalBudget     Decimal?      @db.Decimal(14, 2)
+  targetDate      DateTime?     @db.Date
+  status          ProjectStatus @default(PLANNED)
+  imageUrl        String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
 
-  @@unique([householdId, userId])
-  @@index([userId])
-}
-
-// ─── Lookups ──────────────────────────────────────────────────
-
-enum CategoryKind {
-  EXPENSE
-  INCOME
-  SAVINGS
-  BUILD
-}
-
-model Category {
-  id           String        @id @default(cuid())
-  householdId  String
-  name         String
-  kind         CategoryKind  @default(EXPENSE)
-  color        String?
-  isActive     Boolean       @default(true)
-  sortOrder    Int           @default(0)
-  household    Household     @relation(fields: [householdId], references: [id], onDelete: Cascade)
-  transactions Transaction[]
-
-  @@unique([householdId, name])
-  @@index([householdId, kind])
-}
-
-model PaymentMethod {
-  id            String         @id @default(cuid())
-  householdId   String
-  name          String
-  household     Household      @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  user          User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parent        Project?             @relation("ProjectTree", fields: [parentProjectId], references: [id], onDelete: SetNull)
+  children      Project[]            @relation("ProjectTree")
   transactions  Transaction[]
-  buildPayments BuildPayment[]
+  paymentPlans  ProjectPaymentPlan[]
 
-  @@unique([householdId, name])
+  @@index([userId, status])
+  @@index([userId, targetDate])
+  @@index([userId, parentProjectId])
+  @@index([userId, kind])
 }
-
-model IncomeSource {
-  id           String        @id @default(cuid())
-  householdId  String
-  name         String
-  isActive     Boolean       @default(true)
-  household    Household     @relation(fields: [householdId], references: [id], onDelete: Cascade)
-  transactions Transaction[]
-
-  @@unique([householdId, name])
-}
-
-// ─── Transactions ─────────────────────────────────────────────
 
 enum TransactionType {
   INCOME
   EXPENSE
+  TRANSFER
   SAVINGS_CONTRIBUTION
-  BUILD_EXPENSE
 }
 
 model Transaction {
-  id                String          @id @default(cuid())
-  householdId       String
-  date              DateTime        @db.Date
-  amount            Decimal         @db.Decimal(12, 2)
-  currency          String          @default("ILS")
-  type              TransactionType
-  categoryId        String?
-  incomeSourceId    String?
-  description       String?
-  paymentMethodId   String?
-  notes             String?
-  isBuildExpense    Boolean         @default(false)
-  buildContractorId String?
-  buildPaymentId    String?         @unique
-  savingsPlanId     String?
-  createdAt         DateTime        @default(now())
-  updatedAt         DateTime        @updatedAt
+  id              String          @id @default(cuid())
+  userId          String
+  projectId       String?
+  categoryId      String?
+  payeeId         String?
+  paymentMethodId String?
+  type            TransactionType
+  amount          Decimal         @db.Decimal(14, 2)
+  currency        String          @default("ILS")
+  occurredAt      DateTime        @db.Date
+  description     String?
+  notes           String?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
 
-  household       Household        @relation(fields: [householdId], references: [id], onDelete: Cascade)
-  category        Category?        @relation(fields: [categoryId], references: [id])
-  incomeSource    IncomeSource?    @relation(fields: [incomeSourceId], references: [id])
-  paymentMethod   PaymentMethod?   @relation(fields: [paymentMethodId], references: [id])
-  buildContractor BuildContractor? @relation(fields: [buildContractorId], references: [id])
-  buildPayment    BuildPayment?    @relation(fields: [buildPaymentId], references: [id])
-  savingsPlan     SavingsPlan?     @relation(fields: [savingsPlanId], references: [id])
+  user           User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project        Project?             @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  category       Category?            @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  payee          Payee?               @relation(fields: [payeeId], references: [id], onDelete: SetNull)
+  paymentMethod  PaymentMethod?       @relation(fields: [paymentMethodId], references: [id], onDelete: SetNull)
+  installment    ProjectInstallment?
 
-  @@index([householdId, date])
-  @@index([householdId, type, date])
-  @@index([householdId, categoryId])
-  @@index([householdId, isBuildExpense])
+  @@index([userId, occurredAt])
+  @@index([userId, type, occurredAt])
+  @@index([userId, projectId])
+  @@index([userId, categoryId])
 }
 
-// ─── Construction ─────────────────────────────────────────────
-
-model BuildProject {
-  id          String            @id @default(cuid())
-  householdId String            @unique
-  totalBudget Decimal           @db.Decimal(12, 2)
-  notes       String?
-  household   Household         @relation(fields: [householdId], references: [id], onDelete: Cascade)
-  contractors BuildContractor[]
+enum CategoryKind {
+  INCOME
+  EXPENSE
+  SAVINGS
 }
 
-enum BuildContractorStatus {
-  NOT_STARTED
-  IN_PROGRESS
-  COMPLETED
-  INACTIVE
-}
+model Category {
+  id        String       @id @default(cuid())
+  userId    String
+  name      String
+  kind      CategoryKind
+  color     String?
+  isActive  Boolean      @default(true)
+  sortOrder Int          @default(0)
 
-model BuildContractor {
-  id                    String                @id @default(cuid())
-  householdId           String
-  buildProjectId        String?
-  name                  String
-  profession            String?
-  contractTotal         Decimal               @db.Decimal(12, 2)
-  amountPaid            Decimal               @default(0) @db.Decimal(12, 2)
-  remainingBalance      Decimal               @db.Decimal(12, 2)
-  status                BuildContractorStatus @default(NOT_STARTED)
-  reason                String?
-  notes                 String?
-  notesSecondary        String?
-  isFullyPaid           Boolean               @default(false)
-  downPayment           Decimal?              @db.Decimal(12, 2)
-  totalInstallments     Int?
-  installmentAmount     Decimal?              @db.Decimal(12, 2)
-  installmentsCompleted Int                   @default(0)
-  installmentsRemaining Int?
-  monthsToCompletion    Int?
-  firstPaymentDueDate   DateTime?             @db.Date
-  createdAt             DateTime              @default(now())
-  updatedAt             DateTime              @updatedAt
-
-  household    Household     @relation(fields: [householdId], references: [id], onDelete: Cascade)
-  buildProject BuildProject? @relation(fields: [buildProjectId], references: [id])
-  payments     BuildPayment[]
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   transactions Transaction[]
 
-  @@index([householdId, status])
+  @@unique([userId, name, kind])
+  @@index([userId, kind, isActive])
 }
 
-model BuildPayment {
-  id              String          @id @default(cuid())
-  householdId     String
-  contractorId    String
-  paidAt          DateTime        @db.Date
-  amount          Decimal         @db.Decimal(12, 2)
-  paymentMethodId String?
-  notes           String?
-  household       Household       @relation(fields: [householdId], references: [id], onDelete: Cascade)
-  contractor      BuildContractor @relation(fields: [contractorId], references: [id], onDelete: Cascade)
-  paymentMethod   PaymentMethod?  @relation(fields: [paymentMethodId], references: [id])
-  transaction     Transaction?
+model Payee {
+  id       String  @id @default(cuid())
+  userId   String
+  name     String
+  isActive Boolean @default(true)
 
-  @@index([householdId, paidAt])
-  @@index([contractorId])
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+
+  @@unique([userId, name])
 }
 
-// ─── Savings ──────────────────────────────────────────────────
+model PaymentMethod {
+  id       String  @id @default(cuid())
+  userId   String
+  name     String
+  isActive Boolean @default(true)
+
+  user         User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+  paymentPlans ProjectPaymentPlan[]
+
+  @@unique([userId, name])
+}
 
 enum SavingsPlanType {
   JAMIYA
@@ -266,140 +200,151 @@ enum SavingsPlanType {
 enum SavingsPlanStatus {
   ACTIVE
   COMPLETED
+  PAUSED
   CANCELLED
 }
 
 model SavingsPlan {
   id                  String            @id @default(cuid())
-  householdId         String
-  type                SavingsPlanType
-  name                String
-  monthlyContribution Decimal           @db.Decimal(12, 2)
-  startDate           DateTime          @db.Date
-  payoutDate          DateTime          @db.Date
-  monthsCount         Int
-  totalCommitment     Decimal           @db.Decimal(12, 2)
-  paidToDate          Decimal           @default(0) @db.Decimal(12, 2)
-  remaining           Decimal           @db.Decimal(12, 2)
+  userId              String
+  title               String
+  type                SavingsPlanType   @default(JAMIYA)
+  monthlyContribution Decimal           @db.Decimal(14, 2)
+  targetAmount        Decimal?          @db.Decimal(14, 2)
+  payoutDate          DateTime?         @db.Date
+  startDate           DateTime?         @db.Date
+  durationMonths      Int?
+  notes               String?
   status              SavingsPlanStatus @default(ACTIVE)
-  household           Household         @relation(fields: [householdId], references: [id], onDelete: Cascade)
-  transactions        Transaction[]
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
 
-  @@index([householdId, status])
-  @@index([householdId, payoutDate])
+  user    User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  entries SavingsEntry[]
+
+  @@index([userId, status])
+  @@index([userId, payoutDate])
 }
 
-// ─── Salary ───────────────────────────────────────────────────
+model SavingsEntry {
+  id          String   @id @default(cuid())
+  planId      String
+  periodYear  Int
+  periodMonth Int
+  amount      Decimal  @db.Decimal(14, 2)
+  paid        Boolean  @default(false)
+  paidAt      DateTime? @db.Date
+  isPayout    Boolean  @default(false)
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  plan SavingsPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@unique([planId, periodYear, periodMonth])
+  @@index([planId, paid])
+}
+
+model Employer {
+  id          String  @id @default(cuid())
+  userId      String
+  name        String
+  role        String?
+  color       String?
+  baseGross   Decimal @default(0) @db.Decimal(14, 2)
+  baseNet     Decimal @default(0) @db.Decimal(14, 2)
+  baseTax     Decimal @default(0) @db.Decimal(14, 2)
+  basePension Decimal @default(0) @db.Decimal(14, 2)
+  baseKeren   Decimal @default(0) @db.Decimal(14, 2)
+  startDate   DateTime? @db.Date
+  active      Boolean @default(true)
+
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  salarySlips SalarySlip[]
+
+  @@unique([userId, name])
+  @@index([userId])
+}
 
 model SalarySlip {
-  id              String           @id @default(cuid())
-  householdId     String
-  year            Int
-  month           Int
-  grossTotal      Decimal          @default(0) @db.Decimal(12, 2)
-  deductionsTotal Decimal          @default(0) @db.Decimal(12, 2)
-  netTotal        Decimal          @default(0) @db.Decimal(12, 2)
-  employerName    String?
-  slipDate        DateTime?        @db.Date
+  id              String   @id @default(cuid())
+  userId          String
+  employerId      String
+  periodYear      Int
+  periodMonth     Int
+  worked          Boolean  @default(true)
+  gross           Decimal  @default(0) @db.Decimal(14, 2)
+  net             Decimal  @default(0) @db.Decimal(14, 2)
+  tax             Decimal  @default(0) @db.Decimal(14, 2)
+  pension         Decimal  @default(0) @db.Decimal(14, 2)
+  kerenHishtalmut Decimal  @default(0) @db.Decimal(14, 2)
+  fees            Decimal  @default(0) @db.Decimal(14, 2)
+  bonus           Decimal  @default(0) @db.Decimal(14, 2)
+  paid            Boolean  @default(false)
+  paidAt          DateTime? @db.Date
+  slipFileUrl     String?
   notes           String?
-  createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @updatedAt
-  household       Household        @relation(fields: [householdId], references: [id], onDelete: Cascade)
-  lineItems       SalaryLineItem[]
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
-  @@unique([householdId, year, month])
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  employer Employer @relation(fields: [employerId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, employerId, periodYear, periodMonth])
+  @@index([userId, periodYear, periodMonth])
 }
 
-enum SalaryLineKind {
-  GROSS_COMPONENT
-  DEDUCTION
-  NET
+enum PaymentPlanMode {
+  FULL
+  INSTALLMENTS
 }
 
-model SalaryLineItem {
-  id           String         @id @default(cuid())
-  salarySlipId String
-  code         String
-  label        String
-  labelHe      String?
-  kind         SalaryLineKind
-  amount       Decimal        @db.Decimal(12, 2)
-  salarySlip   SalarySlip     @relation(fields: [salarySlipId], references: [id], onDelete: Cascade)
-
-  @@unique([salarySlipId, code])
+enum InstallmentStatus {
+  PENDING
+  PAID
+  SKIPPED
 }
 
-model KerenHishtalmutProfile {
-  id                   String    @id @default(cuid())
-  householdId          String    @unique
-  employerContribution Decimal?  @db.Decimal(12, 2)
-  employeeContribution Decimal?  @db.Decimal(12, 2)
-  currentBalance       Decimal   @default(0) @db.Decimal(12, 2)
-  vestingEligibleDate  DateTime? @db.Date
-  lastUpdatedAt        DateTime  @updatedAt
-  household            Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+model ProjectPaymentPlan {
+  id                 String          @id @default(cuid())
+  userId             String
+  projectId          String
+  mode               PaymentPlanMode
+  totalAmount        Decimal         @db.Decimal(14, 2)
+  installmentCount   Int?
+  firstPaymentAmount Decimal?        @db.Decimal(14, 2)
+  recurringAmount    Decimal?        @db.Decimal(14, 2)
+  payeeName          String?
+  startDate          DateTime?       @db.Date
+  paymentMethodId    String?
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+
+  user          User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project       Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  paymentMethod PaymentMethod?       @relation(fields: [paymentMethodId], references: [id], onDelete: SetNull)
+  installments  ProjectInstallment[]
+
+  @@index([userId, projectId])
 }
 
-// ─── Aggregates ───────────────────────────────────────────────
+model ProjectInstallment {
+  id            String            @id @default(cuid())
+  planId        String
+  sequence      Int
+  label         String?
+  dueDate       DateTime          @db.Date
+  amount        Decimal           @db.Decimal(14, 2)
+  status        InstallmentStatus @default(PENDING)
+  notes         String?
+  transactionId String?           @unique
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
 
-model MonthlySnapshot {
-  id                   String   @id @default(cuid())
-  householdId          String
-  year                 Int
-  month                Int
-  totalIncome          Decimal  @default(0) @db.Decimal(12, 2)
-  dailyExpenses        Decimal  @default(0) @db.Decimal(12, 2)
-  buildExpenses        Decimal  @default(0) @db.Decimal(12, 2)
-  savingsContributions Decimal  @default(0) @db.Decimal(12, 2)
-  netCashflow          Decimal  @default(0) @db.Decimal(12, 2)
-  incomeBySource       Json     @default("{}")
-  computedAt           DateTime @default(now())
-  household            Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  plan        ProjectPaymentPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  transaction Transaction?       @relation(fields: [transactionId], references: [id], onDelete: SetNull)
 
-  @@unique([householdId, year, month])
-}
-
-// ─── Smart insights ───────────────────────────────────────────
-
-enum InsightType {
-  LIQUIDITY_WARNING
-  INVESTMENT_OPPORTUNITY
-  BUDGET_ANOMALY
-  TAX_SALARY_OPTIMIZATION
-  BUILD_PAYMENT_DUE
-}
-
-enum InsightSeverity {
-  INFO
-  WARNING
-  CRITICAL
-}
-
-model Insight {
-  id          String             @id @default(cuid())
-  householdId String
-  type        InsightType
-  severity    InsightSeverity    @default(INFO)
-  title       String
-  body        String
-  actionLabel String?
-  actionHref  String?
-  metadata    Json?
-  validFrom   DateTime           @default(now())
-  validUntil  DateTime?
-  household   Household          @relation(fields: [householdId], references: [id], onDelete: Cascade)
-  dismissals  InsightDismissal[]
-
-  @@index([householdId, validUntil])
-}
-
-model InsightDismissal {
-  id          String   @id @default(cuid())
-  insightId   String
-  userId      String
-  dismissedAt DateTime @default(now())
-  insight     Insight  @relation(fields: [insightId], references: [id], onDelete: Cascade)
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([insightId, userId])
+  @@unique([planId, sequence])
+  @@index([planId, status])
+  @@index([dueDate, status])
 }

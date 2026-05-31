@@ -10,7 +10,6 @@ declare module "next-auth" {
   interface Session {
     user: {
       id: string;
-      activeHouseholdId?: string | null;
     } & DefaultSession["user"];
   }
 }
@@ -37,42 +36,48 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const valid = await bcrypt.compare(password, user.passwordHash);
         if (!valid) return null;
 
-        const membership = await prisma.householdMember.findFirst({
-          where: { userId: user.id },
-          orderBy: { joinedAt: "asc" },
-        });
-
         return {
           id: user.id,
           email: user.email,
           name: user.name,
-          activeHouseholdId: membership?.householdId ?? null,
         };
       },
     }),
   ],
   callbacks: {
     ...authConfig.callbacks,
-    async jwt({ token, user, trigger, session }) {
+    async jwt({ token, user }) {
       if (user?.id) {
         token.id = user.id;
-        const activeHouseholdId =
-          "activeHouseholdId" in user
-            ? (user as { activeHouseholdId?: string }).activeHouseholdId
-            : undefined;
-        if (activeHouseholdId) {
-          token.activeHouseholdId = activeHouseholdId;
-        } else {
-          const membership = await prisma.householdMember.findFirst({
-            where: { userId: user.id },
-            orderBy: { joinedAt: "asc" },
-          });
-          token.activeHouseholdId = membership?.householdId ?? null;
+        token.email = user.email;
+      }
+
+      const email = (token.email ?? user?.email) as string | undefined;
+
+      if (token.id) {
+        const byId = await prisma.user.findUnique({
+          where: { id: token.id as string },
+          select: { id: true, email: true },
+        });
+        if (byId) {
+          token.id = byId.id;
+          token.email = byId.email;
+          return token;
         }
       }
-      if (trigger === "update" && session?.activeHouseholdId) {
-        token.activeHouseholdId = session.activeHouseholdId as string;
+
+      // Stale session after DB reset — recover by email
+      if (email) {
+        const byEmail = await prisma.user.findUnique({
+          where: { email },
+          select: { id: true, email: true },
+        });
+        if (byEmail) {
+          token.id = byEmail.id;
+          token.email = byEmail.email;
+        }
       }
+
       return token;
     },
   },
