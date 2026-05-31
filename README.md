@@ -1,36 +1,68 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Smart Financial OS (المالية الذكية)
 
-## Getting Started
+Premium RTL FinTech app for cash flow, home construction, Jam'iya savings, and AI-powered financial insights. Migrated from Excel workbook structure.
 
-First, run the development server:
+## Stack
+
+- **Next.js 16** (App Router) + React + Tailwind CSS v4
+- **Prisma 7** + PostgreSQL (Neon-ready)
+- **Auth.js** (credentials, multi-household)
+- **Recharts** + **Framer Motion**
+
+## Setup
+
+1. Copy environment variables:
+
+```bash
+cp .env.example .env
+```
+
+2. Set `DATABASE_URL` (Neon PostgreSQL) and `AUTH_SECRET`:
+
+```bash
+openssl rand -base64 32
+```
+
+3. Push schema to database:
+
+```bash
+npm run db:push
+```
+
+4. Import Excel data (optional):
+
+```bash
+npm run import:excel -- "/path/to/9686F4E.xlsx" your@email.com
+```
+
+Default demo user after import: `demo@fin-sol.local` / `demo1234`
+
+5. Run dev server:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000) → register or login → `/dashboard`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Smart Engine
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- `POST /api/insights/generate` — regenerates liquidity, investment, anomaly, and Keren insights
+- Dashboard auto-generates insights on first visit if none exist
 
-## Learn More
+## Project structure
 
-To learn more about Next.js, take a look at the following resources:
+```
+prisma/schema.prisma     # Full domain model
+src/lib/insights/engine.ts
+src/lib/dashboard-data.ts
+scripts/import-excel.ts
+src/app/dashboard/       # RTL dashboard wireframe
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Deploy (Vercel)
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+1. Connect repo to Vercel
+2. Add `DATABASE_URL`, `AUTH_SECRET` env vars
+3. Run `prisma db push` against production DB (or migrate)
+4. Deploy
