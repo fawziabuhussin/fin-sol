@@ -50,6 +50,11 @@ export const installmentCreateSchema = z.object({
 export const planEditSchema = z.object({
   payeeName: z.string().max(120).optional().or(z.literal("")),
   paymentMethodId: z.string().optional().or(z.literal("")),
+  startDate: z.string().optional(),
+  mode: z.enum(["FULL", "INSTALLMENTS"]).optional(),
+  totalAmount: z.coerce.number().positive().optional(),
+  installmentCount: z.coerce.number().int().min(2).optional(),
+  firstPaymentAmount: z.coerce.number().min(0).optional(),
 });
 
 export function calcRecurringInstallment(

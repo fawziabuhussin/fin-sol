@@ -102,3 +102,32 @@ export function buildInstallmentSchedule(params: {
 
   return schedule;
 }
+
+/** Due date for installment `sequence` (1-based) from the plan start point. */
+export function dueDateForSequence(startDate: Date, sequence: number): Date {
+  if (sequence <= 1) return startDate;
+  return addMonthsUTC(startDate, sequence - 1);
+}
+
+/** Map sequence → amount for an installment plan. */
+export function amountsBySequence(
+  totalAmount: number,
+  firstPaymentAmount: number,
+  installmentCount: number
+): Map<number, number> {
+  const count = Math.max(2, installmentCount);
+  const first = round2(firstPaymentAmount);
+  const recurringCount = count - 1;
+  const remaining = Math.max(0, round2(totalAmount - first));
+  const baseRecurring = round2(remaining / recurringCount);
+  const map = new Map<number, number>();
+  map.set(1, first);
+  let allocated = 0;
+  for (let seq = 2; seq <= count; seq++) {
+    const isLast = seq === count;
+    const amount = isLast ? round2(remaining - allocated) : baseRecurring;
+    allocated = round2(allocated + baseRecurring);
+    map.set(seq, amount);
+  }
+  return map;
+}

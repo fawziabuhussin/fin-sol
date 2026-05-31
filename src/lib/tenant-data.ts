@@ -674,12 +674,14 @@ export async function getProjectDetail(userId: string, projectId: string) {
             include: { transaction: true },
           },
         },
-        orderBy: { createdAt: "asc" },
+        orderBy: { createdAt: "desc" },
       },
     },
   });
 
   if (!project) return null;
+
+  const activePlan = project.paymentPlans[0] ?? null;
 
   const paid = project.transactions.reduce(
     (sum, t) => sum + decimalToNumber(t.amount),
@@ -687,22 +689,20 @@ export async function getProjectDetail(userId: string, projectId: string) {
   );
   const totalBudget = decimalToNumber(project.totalBudget);
 
-  const installments = project.paymentPlans.flatMap((plan) =>
-    plan.installments.map((inst) => ({
-      id: inst.id,
-      planId: plan.id,
-      sequence: inst.sequence,
-      label: inst.label ?? `الدفعة ${inst.sequence}`,
-      dueDate: inst.dueDate.toISOString().slice(0, 10),
-      amount: decimalToNumber(inst.amount),
-      status: inst.status,
-      notes: inst.notes,
-      payeeName: plan.payeeName ?? null,
-      paymentMethod: plan.paymentMethod?.name ?? null,
-      paidAt: inst.transaction?.occurredAt.toISOString().slice(0, 10) ?? null,
-      transactionId: inst.transactionId,
-    }))
-  );
+  const installments = (activePlan?.installments ?? []).map((inst) => ({
+    id: inst.id,
+    planId: activePlan!.id,
+    sequence: inst.sequence,
+    label: inst.label ?? `الدفعة ${inst.sequence}`,
+    dueDate: inst.dueDate.toISOString().slice(0, 10),
+    amount: decimalToNumber(inst.amount),
+    status: inst.status,
+    notes: inst.notes,
+    payeeName: activePlan!.payeeName ?? null,
+    paymentMethod: activePlan!.paymentMethod?.name ?? null,
+    paidAt: inst.transaction?.occurredAt.toISOString().slice(0, 10) ?? null,
+    transactionId: inst.transactionId,
+  }));
 
   return {
     id: project.id,
@@ -740,6 +740,7 @@ export async function getProjectDetail(userId: string, projectId: string) {
       payeeName: plan.payeeName ?? null,
       startDate: plan.startDate?.toISOString().slice(0, 10) ?? null,
       paymentMethod: plan.paymentMethod?.name ?? null,
+      paymentMethodId: plan.paymentMethodId ?? null,
     })),
   };
 }

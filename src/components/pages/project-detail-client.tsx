@@ -75,6 +75,7 @@ type ProjectDetail = {
     payeeName: string | null;
     startDate: string | null;
     paymentMethod: string | null;
+    paymentMethodId: string | null;
   }[];
 };
 
@@ -152,7 +153,7 @@ export function ProjectDetailClient({
   const isContractor = detail.kind === "BUILD_CONTRACTOR";
   const pending = detail.installments.filter((i) => i.status === "PENDING");
   const paidCount = detail.installments.filter((i) => i.status === "PAID").length;
-  const plan = detail.paymentPlans[0];
+  const plan = detail.paymentPlans[0] ?? null;
   const KindIcon = isContractor ? Hammer : FolderKanban;
   const [showHistory, setShowHistory] = useState(false);
 
@@ -299,7 +300,8 @@ export function ProjectDetailClient({
             paymentMethods={paymentMethods}
             defaultTotal={detail.remaining > 0 ? detail.remaining : detail.totalBudget}
             defaultPayee={plan?.payeeName ?? detail.title}
-            triggerLabel={plan ? "خطة دفع جديدة" : "إنشاء خطة دفع"}
+            existingPlan={plan}
+            triggerLabel={plan ? "تعديل خطة الدفع" : "إنشاء خطة دفع"}
           />
         </div>
 
