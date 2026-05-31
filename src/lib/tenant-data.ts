@@ -608,6 +608,7 @@ export async function getBuildingProjectSummary(
       title: child.title,
       profession: child.profession,
       status: child.status,
+      targetDate: child.targetDate?.toISOString().slice(0, 10) ?? null,
       totalBudget: decimalToNumber(child.totalBudget),
       paid: childPaid,
       remaining: Math.max(0, decimalToNumber(child.totalBudget) - childPaid),
@@ -616,6 +617,7 @@ export async function getBuildingProjectSummary(
   });
 
   const upcomingInstallments = master.children
+    .filter((child) => child.status !== "PLANNED" && child.status !== "CANCELLED")
     .flatMap((child) =>
       child.paymentPlans.flatMap((plan) =>
         plan.installments
@@ -711,6 +713,7 @@ export async function getProjectDetail(userId: string, projectId: string) {
     profession: project.profession,
     description: project.description,
     status: project.status,
+    targetDate: project.targetDate?.toISOString().slice(0, 10) ?? null,
     totalBudget,
     paid,
     remaining: Math.max(0, totalBudget - paid),

@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useTransition } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import {
   Cell,
@@ -15,12 +16,27 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { Building2, Calendar, Hammer } from "lucide-react";
+import { Building2, Calendar, Clock, Hammer, Play } from "lucide-react";
+import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, cn } from "@/lib/utils";
+import { projectStatusLabel } from "@/lib/finance-labels";
 import { BuildingPaymentSheet } from "@/components/forms/building-payment-sheet";
+
+type Contractor = {
+  id: string;
+  title: string;
+  profession: string | null;
+  status: string;
+  targetDate: string | null;
+  totalBudget: number;
+  paid: number;
+  remaining: number;
+  pendingCount: number;
+};
 
 type Summary = {
   master: {
@@ -32,16 +48,7 @@ type Summary = {
     percentComplete: number;
     imageUrl: string | null;
   };
-  contractors: {
-    id: string;
-    title: string;
-    profession: string | null;
-    status: string;
-    totalBudget: number;
-    paid: number;
-    remaining: number;
-    pendingCount: number;
-  }[];
+  contractors: Contractor[];
   upcomingInstallments: {
     id: string;
     contractorId: string;
@@ -55,6 +62,101 @@ type Summary = {
   chart: { paid: number; remaining: number };
 };
 
+function ContractorCard({
+  c,
+  paymentMethods,
+  onStatusChange,
+  isPending,
+}: {
+  c: Contractor;
+  paymentMethods: { id: string; name: string }[];
+  onStatusChange: (id: string, status: string) => void;
+  isPending: boolean;
+}) {
+  const isPlanned = c.status === "PLANNED";
+  const pct = c.totalBudget > 0 ? Math.round((c.paid / c.totalBudget) * 100) : 0;
+
+  return (
+    <div
+      className={cn(
+        "rounded-2xl border p-4 shadow-sm transition",
+        isPlanned
+          ? "border-dashed border-indigo-200 bg-indigo-50/30"
+          : "border-slate-100 bg-white"
+      )}
+    >
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <Link
+              href={`/projects/${c.id}`}
+              className="font-bold text-slate-900 hover:underline"
+            >
+              {c.title}
+            </Link>
+            <Badge variant={isPlanned ? "warning" : c.status === "ACTIVE" ? "success" : "default"}>
+              {projectStatusLabel(c.status)}
+            </Badge>
+          </div>
+          <p className="mt-1 text-xs text-slate-500">
+            {c.profession && `${c.profession} · `}
+            {isPlanned
+              ? c.targetDate
+                ? `يبدأ ${c.targetDate}`
+                : "لم يُحدد تاريخ البداية بعد"
+              : `${c.pendingCount} أقساط معلّقة`}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {!isPlanned && (
+            <>
+              <span className="text-sm font-bold text-emerald-700">
+                {formatCurrency(c.paid)}
+              </span>
+              <span className="text-slate-300">/</span>
+              <span className="text-sm text-slate-600">
+                {formatCurrency(c.totalBudget)}
+              </span>
+            </>
+          )}
+          {isPlanned ? (
+            <span className="text-sm font-semibold text-indigo-700">
+              {formatCurrency(c.totalBudget)}
+            </span>
+          ) : (
+            <BuildingPaymentSheet
+              projectId={c.id}
+              projectTitle={c.title}
+              paymentMethods={paymentMethods}
+              defaultTotal={c.remaining}
+              triggerLabel="خطة دفع"
+            />
+          )}
+          {isPlanned ? (
+            <Button
+              size="sm"
+              disabled={isPending}
+              onClick={() => onStatusChange(c.id, "ACTIVE")}
+            >
+              <Play className="h-4 w-4" /> بدء التنفيذ
+            </Button>
+          ) : (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={isPending}
+              onClick={() => onStatusChange(c.id, "PLANNED")}
+            >
+              <Clock className="h-4 w-4" /> للمستقبل
+            </Button>
+          )}
+        </div>
+      </div>
+      {!isPlanned && <Progress value={pct} className="mt-3 h-2" />}
+    </div>
+  );
+}
+
 export function BuildingDashboardClient({
   summary,
   paymentMethods,
@@ -62,6 +164,33 @@ export function BuildingDashboardClient({
   summary: Summary;
   paymentMethods: { id: string; name: string }[];
 }) {
+  const router = useRouter();
+  const [isPending, startTransition] = useTransition();
+
+  const { activeContractors, plannedContractors } = useMemo(() => {
+    const planned = summary.contractors.filter((c) => c.status === "PLANNED");
+    const active = summary.contractors.filter((c) => c.status !== "PLANNED");
+    return { activeContractors: active, plannedContractors: planned };
+  }, [summary.contractors]);
+
+  const setStatus = (id: string, status: string) => {
+    startTransition(async () => {
+      const res = await fetch(`/api/projects/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+      if (!res.ok) {
+        toast.error("فشل تحديث الحالة");
+        return;
+      }
+      toast.success(
+        status === "PLANNED" ? "تم نقله للمستقبل" : "تم بدء التنفيذ"
+      );
+      router.refresh();
+    });
+  };
+
   const pieData = useMemo(
     () => [
       { name: "مدفوع", value: summary.chart.paid, fill: "#059669" },
@@ -70,7 +199,7 @@ export function BuildingDashboardClient({
     [summary.chart]
   );
 
-  const barData = summary.contractors.map((c) => ({
+  const barData = activeContractors.map((c) => ({
     name: c.title.slice(0, 12),
     paid: c.paid,
     remaining: c.remaining,
@@ -148,7 +277,7 @@ export function BuildingDashboardClient({
 
         <Card>
           <CardHeader>
-            <CardTitle>المقاولون — حسب الإنفاق</CardTitle>
+            <CardTitle>المقاولون النشطون — حسب الإنفاق</CardTitle>
           </CardHeader>
           <CardContent className="h-64">
             <ResponsiveContainer width="100%" height="100%">
@@ -169,7 +298,7 @@ export function BuildingDashboardClient({
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Calendar className="h-5 w-5" />
-              الدفعات القادمة
+              الدفعات القادمة (قيد التنفيذ فقط)
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
@@ -199,54 +328,53 @@ export function BuildingDashboardClient({
         </Card>
       )}
 
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="flex items-center gap-2">
-            <Hammer className="h-5 w-5" />
-            المقاولون والموردون
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {summary.contractors.map((c) => {
-            const pct =
-              c.totalBudget > 0 ? Math.round((c.paid / c.totalBudget) * 100) : 0;
-            return (
-              <div
+      {activeContractors.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Hammer className="h-5 w-5" />
+              قيد التنفيذ ({activeContractors.length})
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {activeContractors.map((c) => (
+              <ContractorCard
                 key={c.id}
-                className="rounded-2xl border border-slate-100 p-4 shadow-sm"
-              >
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <Link href={`/projects/${c.id}`} className="font-bold text-slate-900 hover:underline">
-                      {c.title}
-                    </Link>
-                    <p className="text-xs text-slate-500">
-                      {c.profession && `${c.profession} · `}
-                      {c.status} · {c.pendingCount} أقساط معلّقة
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-sm font-bold text-emerald-700">
-                      {formatCurrency(c.paid)}
-                    </span>
-                    <span className="text-slate-300">/</span>
-                    <span className="text-sm text-slate-600">
-                      {formatCurrency(c.totalBudget)}
-                    </span>
-                    <BuildingPaymentSheet
-                      projectId={c.id}
-                      projectTitle={c.title}
-                      paymentMethods={paymentMethods}
-                      defaultTotal={c.remaining}
-                    />
-                  </div>
-                </div>
-                <Progress value={pct} className="mt-3 h-2" />
-              </div>
-            );
-          })}
-        </CardContent>
-      </Card>
+                c={c}
+                paymentMethods={paymentMethods}
+                onStatusChange={setStatus}
+                isPending={isPending}
+              />
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {plannedContractors.length > 0 && (
+        <Card className="border-indigo-100 bg-indigo-50/20">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-indigo-900">
+              <Clock className="h-5 w-5" />
+              مخطط للمستقبل ({plannedContractors.length})
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-sm text-indigo-800/80">
+              هذه البنود لا تُحتسب في الدفعات القادمة حتى تضغط «بدء التنفيذ».
+              حدّد تاريخ البداية من صفحة المشروع.
+            </p>
+            {plannedContractors.map((c) => (
+              <ContractorCard
+                key={c.id}
+                c={c}
+                paymentMethods={paymentMethods}
+                onStatusChange={setStatus}
+                isPending={isPending}
+              />
+            ))}
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

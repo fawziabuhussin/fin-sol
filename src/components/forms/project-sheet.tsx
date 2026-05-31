@@ -86,7 +86,7 @@ export function ProjectSheet({
               <Input type="number" step="0.01" {...form.register("totalBudget")} />
             </div>
             <div>
-              <Label>الهدف الزمني</Label>
+              <Label>تاريخ البداية المخطط</Label>
               <Input type="date" {...form.register("targetDate")} />
             </div>
           </div>
@@ -94,12 +94,16 @@ export function ProjectSheet({
           <div>
             <Label>الحالة</Label>
             <Select {...form.register("status")}>
-              <option value="PLANNED">مخطط</option>
-              <option value="ACTIVE">نشط</option>
-              <option value="ON_HOLD">متوقف</option>
+              <option value="PLANNED">مخطط للمستقبل</option>
+              <option value="ACTIVE">قيد التنفيذ — بدأ الآن</option>
+              <option value="ON_HOLD">متوقف مؤقتاً</option>
               <option value="COMPLETED">مكتمل</option>
               <option value="CANCELLED">ملغى</option>
             </Select>
+            <p className="mt-1 text-xs text-slate-500">
+              اختر «مخطط للمستقبل» للبنود التي لم تبدأ بعد — لن تظهر في الدفعات
+              القادمة حتى تفعّلها.
+            </p>
           </div>
 
           <div className="flex justify-end gap-2">

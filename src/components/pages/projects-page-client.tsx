@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { formatCurrency } from "@/lib/utils";
+import { PROJECT_STATUS_LABELS } from "@/lib/finance-labels";
 
 type ProjectRow = {
   id: string;
@@ -62,7 +63,7 @@ export function ProjectsPageClient({
       },
       {
         accessorKey: "targetDate",
-        header: "الهدف",
+        header: "تاريخ البداية",
         cell: ({ row }) => row.original.targetDate ?? "—",
       },
       {
@@ -70,14 +71,11 @@ export function ProjectsPageClient({
         header: "الحالة",
         cell: ({ row }) => {
           const status = row.original.status;
-          const label: Record<string, string> = {
-            PLANNED: "مخطط",
-            ACTIVE: "نشط",
-            ON_HOLD: "متوقف",
-            COMPLETED: "مكتمل",
-            CANCELLED: "ملغى",
-          };
-          return <Badge variant={status === "ACTIVE" ? "success" : "default"}>{label[status]}</Badge>;
+          return (
+            <Badge variant={status === "ACTIVE" ? "success" : status === "PLANNED" ? "warning" : "default"}>
+              {PROJECT_STATUS_LABELS[status] ?? status}
+            </Badge>
+          );
         },
       },
       {

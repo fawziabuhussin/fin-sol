@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/session";
-import { projectSchema } from "@/lib/validations/projects";
+import { handleApiError } from "@/lib/api-error";
+import { projectPatchSchema } from "@/lib/validations/projects";
 
 export async function PATCH(
   req: Request,
@@ -15,8 +16,7 @@ export async function PATCH(
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 
-    const body = await req.json();
-    const parsed = projectSchema.safeParse(body);
+    const parsed = projectPatchSchema.safeParse(await req.json());
     if (!parsed.success) {
       return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
     }
@@ -25,17 +25,21 @@ export async function PATCH(
     const updated = await prisma.project.update({
       where: { id },
       data: {
-        title: data.title,
-        description: data.description || null,
-        totalBudget: data.totalBudget ?? null,
-        targetDate: data.targetDate ? new Date(data.targetDate) : null,
-        status: data.status,
+        ...(data.title !== undefined ? { title: data.title } : {}),
+        ...(data.description !== undefined
+          ? { description: data.description || null }
+          : {}),
+        ...(data.totalBudget !== undefined ? { totalBudget: data.totalBudget ?? null } : {}),
+        ...(data.targetDate !== undefined
+          ? { targetDate: data.targetDate ? new Date(data.targetDate) : null }
+          : {}),
+        ...(data.status !== undefined ? { status: data.status } : {}),
       },
     });
 
     return NextResponse.json(updated);
-  } catch {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  } catch (error) {
+    return handleApiError(error);
   }
 }
 
@@ -53,7 +57,7 @@ export async function DELETE(
 
     await prisma.project.delete({ where: { id } });
     return NextResponse.json({ ok: true });
-  } catch {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  } catch (error) {
+    return handleApiError(error);
   }
 }

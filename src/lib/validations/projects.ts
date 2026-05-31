@@ -9,3 +9,5 @@ export const projectSchema = z.object({
 });
 
 export type ProjectInput = z.infer<typeof projectSchema>;
+
+export const projectPatchSchema = projectSchema.partial();

@@ -24,6 +24,7 @@ import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
@@ -51,6 +52,7 @@ type ProjectDetail = {
   profession: string | null;
   description: string | null;
   status: string;
+  targetDate: string | null;
   totalBudget: number;
   paid: number;
   remaining: number;
@@ -80,7 +82,7 @@ type ProjectDetail = {
 };
 
 const STATUS_LABELS: Record<string, string> = {
-  PLANNED: "لم يبدأ",
+  PLANNED: "مخطط للمستقبل",
   ACTIVE: "قيد التنفيذ",
   ON_HOLD: "متوقف",
   COMPLETED: "مكتمل",
@@ -251,6 +253,24 @@ export function ProjectDetailClient({
     });
   };
 
+  const patchProject = (body: Record<string, unknown>, msg: string) => {
+    startTransition(async () => {
+      const res = await fetch(`/api/projects/${detail.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        toast.error("فشل التحديث");
+        return;
+      }
+      toast.success(msg);
+      router.refresh();
+    });
+  };
+
+  const isPlanned = detail.status === "PLANNED";
+
   return (
     <div className="space-y-4 pb-4 sm:space-y-6">
       <div className="flex items-center justify-between">
@@ -290,11 +310,57 @@ export function ProjectDetailClient({
             {detail.profession && (
               <p className="mt-1 text-sm text-slate-600">{detail.profession}</p>
             )}
-            <Badge className="mt-2" variant="default">
+            <Badge
+              className="mt-2"
+              variant={isPlanned ? "warning" : detail.status === "ACTIVE" ? "success" : "default"}
+            >
               {STATUS_LABELS[detail.status] ?? detail.status}
             </Badge>
+            {isPlanned && (
+              <p className="mt-2 text-sm text-indigo-700">
+                مخطط للمستقبل
+                {detail.targetDate ? ` — يبدأ ${detail.targetDate}` : " — حدّد تاريخ البداية أدناه"}
+              </p>
+            )}
           </div>
-          <BuildingPaymentSheet
+          <div className="flex flex-col gap-2 sm:items-end">
+            <div className="grid grid-cols-2 gap-2 sm:w-64">
+              <div>
+                <Label className="text-xs">الحالة</Label>
+                <Select
+                  value={detail.status}
+                  disabled={isPending}
+                  onChange={(e) =>
+                    patchProject(
+                      { status: e.target.value },
+                      e.target.value === "PLANNED"
+                        ? "تم نقله للمستقبل"
+                        : "تم تحديث الحالة"
+                    )
+                  }
+                >
+                  <option value="PLANNED">مخطط للمستقبل</option>
+                  <option value="ACTIVE">قيد التنفيذ</option>
+                  <option value="ON_HOLD">متوقف</option>
+                  <option value="COMPLETED">مكتمل</option>
+                  <option value="CANCELLED">ملغى</option>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-xs">تاريخ البداية المخطط</Label>
+                <Input
+                  type="date"
+                  defaultValue={detail.targetDate ?? ""}
+                  disabled={isPending}
+                  onBlur={(e) => {
+                    if (e.target.value !== (detail.targetDate ?? "")) {
+                      patchProject({ targetDate: e.target.value || null }, "تم حفظ التاريخ");
+                    }
+                  }}
+                />
+              </div>
+            </div>
+            <BuildingPaymentSheet
             projectId={detail.id}
             projectTitle={detail.title}
             paymentMethods={paymentMethods}
@@ -303,6 +369,7 @@ export function ProjectDetailClient({
             existingPlan={plan}
             triggerLabel={plan ? "تعديل خطة الدفع" : "إنشاء خطة دفع"}
           />
+          </div>
         </div>
 
         {detail.description && (

@@ -23,3 +23,15 @@ export const INCOME_SOURCES = [
 export function monthLabel(month: number) {
   return AR_MONTHS[month - 1] ?? "";
 }
+
+export const PROJECT_STATUS_LABELS: Record<string, string> = {
+  PLANNED: "مخطط للمستقبل",
+  ACTIVE: "قيد التنفيذ",
+  ON_HOLD: "متوقف",
+  COMPLETED: "مكتمل",
+  CANCELLED: "ملغى",
+};
+
+export function projectStatusLabel(status: string) {
+  return PROJECT_STATUS_LABELS[status] ?? status;
+}
