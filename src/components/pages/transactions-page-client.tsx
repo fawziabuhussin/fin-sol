@@ -1,7 +1,9 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { motion, AnimatePresence } from "framer-motion";
 import { type ColumnDef } from "@tanstack/react-table";
 import {
   ArrowDownCircle,
@@ -12,6 +14,8 @@ import {
   Plus,
   Search,
   Wallet,
+  Briefcase,
+  X,
 } from "lucide-react";
 import { DataTable } from "@/components/tables/data-table";
 import { RowActions } from "@/components/tables/row-actions";
@@ -38,6 +42,8 @@ type TransactionRow = {
   categoryName: string;
   projectName: string;
   paymentMethodName: string;
+  salarySlipId: string | null;
+  employerId: string | null;
 };
 
 type Option = { id: string; name: string };
@@ -76,6 +82,8 @@ export function TransactionsPageClient({
   const [defaultType, setDefaultType] = useState<"INCOME" | "EXPENSE">("EXPENSE");
   const [q, setQ] = useState(filters.q);
   const [isPending, startTransition] = useTransition();
+  const [salaryBlock, setSalaryBlock] = useState<TransactionRow | null>(null);
+  const [shakeRowId, setShakeRowId] = useState<string | null>(null);
 
   const buildUrl = (next: Partial<Filters>) => {
     const m = { ...filters, ...next };
@@ -129,6 +137,12 @@ export function TransactionsPageClient({
     return rows.filter((row) => row.categoryId === filters.expenseCategory);
   }, [data, filters.expenseCategory]);
 
+  const blockSalaryEdit = (row: TransactionRow) => {
+    setShakeRowId(row.id);
+    setSalaryBlock(row);
+    setTimeout(() => setShakeRowId(null), 500);
+  };
+
   const incomeColumns = useMemo<ColumnDef<TransactionRow>[]>(
     () => [
       {
@@ -140,6 +154,15 @@ export function TransactionsPageClient({
           >
             التاريخ <ArrowUpDown className="h-3 w-3" />
           </button>
+        ),
+        cell: ({ row }) => (
+          <motion.span
+            animate={shakeRowId === row.original.id ? { x: [0, -6, 6, -6, 6, 0] } : {}}
+            transition={{ duration: 0.4 }}
+            className="inline-block"
+          >
+            {row.original.occurredAtLabel}
+          </motion.span>
         ),
       },
       {
@@ -153,12 +176,28 @@ export function TransactionsPageClient({
           </button>
         ),
         cell: ({ row }) => (
-          <span className="font-bold text-emerald-700">
+          <motion.span
+            animate={shakeRowId === row.original.id ? { x: [0, -6, 6, -6, 6, 0] } : {}}
+            className="inline-block font-bold text-emerald-700"
+          >
             +{formatCurrency(row.original.amount)}
-          </span>
+          </motion.span>
         ),
       },
-      { accessorKey: "description", header: "المصدر" },
+      {
+        accessorKey: "description",
+        header: "المصدر",
+        cell: ({ row }) => (
+          <div className="flex flex-wrap items-center gap-2">
+            <span>{row.original.description}</span>
+            {row.original.salarySlipId && (
+              <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">
+                من الراتب
+              </span>
+            )}
+          </div>
+        ),
+      },
       { accessorKey: "categoryName", header: "الفئة" },
       { accessorKey: "paymentMethodName", header: "الدفع" },
       {
@@ -166,14 +205,22 @@ export function TransactionsPageClient({
         header: "",
         cell: ({ row }) => (
           <RowActions
-            onEdit={() => openEdit(row.original)}
-            onDelete={() => deleteRow(row.original.id)}
+            onEdit={() =>
+              row.original.salarySlipId
+                ? blockSalaryEdit(row.original)
+                : openEdit(row.original)
+            }
+            onDelete={() =>
+              row.original.salarySlipId
+                ? blockSalaryEdit(row.original)
+                : deleteRow(row.original.id)
+            }
           />
         ),
       },
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [router]
+    [router, shakeRowId]
   );
 
   const expenseColumns = useMemo<ColumnDef<TransactionRow>[]>(
@@ -466,6 +513,70 @@ export function TransactionsPageClient({
         lookups={lookups}
       />
       {isPending && <p className="text-xs text-slate-500">جاري التحديث...</p>}
+
+      <AnimatePresence>
+        {salaryBlock && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+            onClick={() => setSalaryBlock(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, y: 8 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 8 }}
+              className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-indigo-50 text-indigo-700">
+                  <Briefcase className="h-5 w-5" />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSalaryBlock(null)}
+                  className="rounded-lg p-1 text-slate-400 hover:bg-slate-100"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+              <h2 className="mt-3 text-lg font-bold text-slate-900">
+                تعديل من صفحة الراتب
+              </h2>
+              <p className="mt-2 text-sm text-slate-600">
+                دخل <strong>{salaryBlock.description}</strong> مرتبط بكشف الراتب.
+                لتغيير المبلغ أو التاريخ، افتح صفحة جهة العمل في متابعة الراتب.
+              </p>
+              <p className="mt-2 text-xs text-slate-500">
+                راتب شهر معيّن يُسجّل كدخل في الشهر التالي (مثلاً: راتب مايو → دخل
+                يونيو).
+              </p>
+              <div className="mt-5 flex flex-col gap-2 sm:flex-row">
+                {salaryBlock.employerId ? (
+                  <Button asChild className="flex-1">
+                    <Link href={`/salary/${salaryBlock.employerId}`}>
+                      فتح الراتب
+                    </Link>
+                  </Button>
+                ) : (
+                  <Button asChild className="flex-1">
+                    <Link href="/salary">متابعة الراتب</Link>
+                  </Button>
+                )}
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => setSalaryBlock(null)}
+                >
+                  إغلاق
+                </Button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

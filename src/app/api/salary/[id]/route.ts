@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/session";
 import { handleApiError } from "@/lib/api-error";
+import { removeSalarySlipIncome } from "@/lib/salary-income-sync";
 
 export async function DELETE(
   _req: Request,
@@ -16,6 +17,7 @@ export async function DELETE(
     if (!slip) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
+    await removeSalarySlipIncome(id);
     await prisma.salarySlip.delete({ where: { id } });
     return NextResponse.json({ ok: true });
   } catch (error) {

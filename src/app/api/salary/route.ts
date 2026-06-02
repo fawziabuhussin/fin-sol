@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/session";
 import { handleApiError } from "@/lib/api-error";
 import { salarySchema } from "@/lib/validations/salary";
+import { syncSalarySlipIncome } from "@/lib/salary-income-sync";
 
 export async function POST(req: Request) {
   try {
@@ -64,6 +65,8 @@ export async function POST(req: Request) {
         slipFileUrl: data.slipFileUrl || null,
       },
     });
+
+    await syncSalarySlipIncome(created.id);
 
     return NextResponse.json(created, { status: 201 });
   } catch (error) {

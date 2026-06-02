@@ -1,6 +1,11 @@
 import { prisma } from "@/lib/db";
 import { decimalToNumber } from "@/lib/utils";
-import { monthRangeUTC, utcMonth, yearRangeUTC } from "@/lib/dates";
+import {
+  incomeMonthAfterSalaryPeriod,
+  monthRangeUTC,
+  utcMonth,
+  yearRangeUTC,
+} from "@/lib/dates";
 import { INCOME_SOURCES, monthLabel } from "@/lib/finance-labels";
 import { CategoryKind, ProjectKind, TransactionType } from "@/generated/prisma/client";
 
@@ -844,11 +849,14 @@ export async function getEmployerDetail(
 
   const months = Array.from({ length: 12 }, (_, i) => {
     const month = i + 1;
+    const incomeAt = incomeMonthAfterSalaryPeriod(year, month);
+    const incomeMonthLabel = `${monthLabel(incomeAt.month)} ${incomeAt.year}`;
     const slip = slipByMonth.get(month);
     if (!slip) {
       return {
         month,
         label: monthLabel(month),
+        incomeMonthLabel,
         slipId: null as string | null,
         exists: false,
         worked: true,
@@ -871,6 +879,7 @@ export async function getEmployerDetail(
     return {
       month,
       label: monthLabel(month),
+      incomeMonthLabel,
       slipId: slip.id as string | null,
       exists: true,
       worked: slip.worked,
@@ -989,6 +998,7 @@ export async function listTransactions(params: {
         project: true,
         payee: true,
         paymentMethod: true,
+        salarySlip: { include: { employer: true } },
       },
       orderBy: { occurredAt: "desc" },
       skip,

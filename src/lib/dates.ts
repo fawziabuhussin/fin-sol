@@ -31,3 +31,14 @@ export function utcMonth(d: Date) {
 export function utcYear(d: Date) {
   return d.getUTCFullYear();
 }
+
+/** Salary for period (y, m) is recorded as income on the 1st of the next calendar month. */
+export function incomeMonthAfterSalaryPeriod(year: number, month: number) {
+  if (month === 12) return { year: year + 1, month: 1 };
+  return { year, month: month + 1 };
+}
+
+export function incomeDateFromSalaryPeriod(year: number, month: number) {
+  const { year: y, month: m } = incomeMonthAfterSalaryPeriod(year, month);
+  return new Date(Date.UTC(y, m - 1, 1));
+}

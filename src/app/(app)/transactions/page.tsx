@@ -83,6 +83,8 @@ export default async function TransactionsPage({
         categoryName: item.category?.name ?? "—",
         projectName: item.project?.title ?? "—",
         paymentMethodName: item.paymentMethod?.name ?? "—",
+        salarySlipId: item.salarySlipId,
+        employerId: item.salarySlip?.employerId ?? null,
       }))}
     />
   );

@@ -22,6 +22,7 @@ import {
   buildInstallmentSchedule,
   installmentLabel,
 } from "../src/lib/payment-plan";
+import { syncSalarySlipIncome } from "../src/lib/salary-income-sync";
 import {
   InstallmentStatus,
   PaymentPlanMode,
@@ -646,18 +647,6 @@ async function importAnnualIncome(
   );
   if (headerIdx < 0) return;
 
-  let incomeCat = await prisma.category.findFirst({
-    where: { userId, name: "دخل" },
-  });
-  if (!incomeCat) {
-    incomeCat = await prisma.category.create({
-      data: { userId, name: "دخل", kind: CategoryKind.INCOME },
-    });
-  }
-
-  const payees = await prisma.payee.findMany({ where: { userId } });
-  const payeeByName = Object.fromEntries(payees.map((p) => [p.name, p]));
-
   let incomeCount = 0;
   let salaryCount = 0;
 
@@ -670,57 +659,37 @@ async function importAnnualIncome(
     if (!periodMonth) continue;
 
     const periodYear = 2026;
-    const occurredAt = new Date(Date.UTC(periodYear, periodMonth - 1, 1));
 
     for (const src of ANNUAL_INCOME_SOURCES) {
       const amount = num(row[src.index]);
       if (amount <= 0) continue;
 
-      let payee = payeeByName[src.name];
-      if (!payee) {
-        payee = await prisma.payee.create({
-          data: { userId, name: src.name },
-        });
-        payeeByName[src.name] = payee;
-      }
-
-      await prisma.transaction.create({
-        data: {
-          userId,
-          type: TransactionType.INCOME,
-          amount,
-          occurredAt,
-          categoryId: incomeCat.id,
-          payeeId: payee.id,
-          description: src.name,
-        },
-      });
-      incomeCount++;
-
       const employer = employers[src.name];
-      if (employer) {
-        await prisma.salarySlip.upsert({
-          where: {
-            userId_employerId_periodYear_periodMonth: {
-              userId,
-              employerId: employer.id,
-              periodYear,
-              periodMonth,
-            },
-          },
-          create: {
+      if (!employer) continue;
+
+      const slip = await prisma.salarySlip.upsert({
+        where: {
+          userId_employerId_periodYear_periodMonth: {
             userId,
             employerId: employer.id,
             periodYear,
             periodMonth,
-            gross: amount,
-            net: amount,
-            paid: false,
           },
-          update: { gross: amount, net: amount },
-        });
-        salaryCount++;
-      }
+        },
+        create: {
+          userId,
+          employerId: employer.id,
+          periodYear,
+          periodMonth,
+          gross: amount,
+          net: amount,
+          paid: false,
+        },
+        update: { gross: amount, net: amount },
+      });
+      await syncSalarySlipIncome(slip.id, prisma);
+      salaryCount++;
+      incomeCount++;
     }
   }
 

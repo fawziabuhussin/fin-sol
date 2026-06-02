@@ -15,6 +15,16 @@ export async function PATCH(
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 
+    if (existing.salarySlipId) {
+      return NextResponse.json(
+        {
+          error: "SALARY_LINKED",
+          message: "هذا الدخل مرتبط بالراتب — عدّله من صفحة الراتب",
+        },
+        { status: 403 }
+      );
+    }
+
     const body = await req.json();
     const parsed = transactionSchema.safeParse(body);
     if (!parsed.success) {
@@ -54,6 +64,16 @@ export async function DELETE(
     const existing = await prisma.transaction.findFirst({ where: { id, userId: user.id } });
     if (!existing) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
+
+    if (existing.salarySlipId) {
+      return NextResponse.json(
+        {
+          error: "SALARY_LINKED",
+          message: "لا يمكن حذف دخل مرتبط بالراتب — عدّله من صفحة الراتب",
+        },
+        { status: 403 }
+      );
     }
 
     await prisma.transaction.delete({ where: { id } });

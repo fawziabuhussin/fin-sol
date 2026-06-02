@@ -124,6 +124,7 @@ model Transaction {
   categoryId      String?
   payeeId         String?
   paymentMethodId String?
+  salarySlipId    String?         @unique
   type            TransactionType
   amount          Decimal         @db.Decimal(14, 2)
   currency        String          @default("ILS")
@@ -138,6 +139,7 @@ model Transaction {
   category       Category?            @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   payee          Payee?               @relation(fields: [payeeId], references: [id], onDelete: SetNull)
   paymentMethod  PaymentMethod?       @relation(fields: [paymentMethodId], references: [id], onDelete: SetNull)
+  salarySlip     SalarySlip?          @relation(fields: [salarySlipId], references: [id], onDelete: Cascade)
   installment    ProjectInstallment?
 
   @@index([userId, occurredAt])
@@ -311,8 +313,9 @@ model SalarySlip {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  employer Employer @relation(fields: [employerId], references: [id], onDelete: Cascade)
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  employer    Employer     @relation(fields: [employerId], references: [id], onDelete: Cascade)
+  transaction Transaction?
 
   @@unique([userId, employerId, periodYear, periodMonth])
   @@index([userId, periodYear, periodMonth])
