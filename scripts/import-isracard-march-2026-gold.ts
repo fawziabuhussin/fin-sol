@@ -10,19 +10,13 @@ import {
   PrismaClient,
   TransactionType,
 } from "../src/generated/prisma/client";
+import { categorizeExpense } from "../src/lib/expense-categories";
 
 const userEmail = process.env.IMPORT_USER_EMAIL || "foze820@gmail.com";
 const dryRun = process.argv.includes("--dry-run");
 const PAYMENT_METHOD = "אשראי";
 const IMPORT_NOTE = "ייבוא ישראכרט גולד 8841 — חיוב 03/2026";
 const MARCH_CHARGE = "20/03/26";
-
-const SECTOR_TO_CATEGORY: Record<string, string> = {
-  "מכולת/סופר": "طعام خارج",
-  שונות: "أخرى",
-  "תש' רשויות": "فواتير",
-  ביטוח: "فواتير",
-};
 
 type Row = {
   merchant: string;
@@ -113,7 +107,7 @@ async function main() {
   let skippedDup = 0;
 
   for (const row of ROWS) {
-    const catName = SECTOR_TO_CATEGORY[row.sector] ?? "أخرى";
+    const catName = categorizeExpense(row.merchant, row.sector);
     const description = row.merchant.trim();
     const notes = [IMPORT_NOTE, row.installmentNote].filter(Boolean).join(" · ");
 

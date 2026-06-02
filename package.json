@@ -16,6 +16,8 @@
     "import:isracard-march-gold": "tsx scripts/import-isracard-march-2026-gold.ts",
     "import:isracard-feb": "tsx scripts/import-isracard-feb-2026.ts",
     "import:isracard-jan": "tsx scripts/import-isracard-jan-2026.ts",
+    "seed:categories": "tsx scripts/seed-expense-categories.ts",
+    "recategorize:isracard": "tsx scripts/recategorize-isracard.ts",
     "postinstall": "prisma generate"
   },
   "dependencies": {

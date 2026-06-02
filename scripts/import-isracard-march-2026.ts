@@ -10,24 +10,11 @@ import {
   PrismaClient,
   TransactionType,
 } from "../src/generated/prisma/client";
+import { categorizeExpense } from "../src/lib/expense-categories";
 
 const userEmail = process.env.IMPORT_USER_EMAIL || "foze820@gmail.com";
 const dryRun = process.argv.includes("--dry-run");
 const PAYMENT_METHOD = "אשראי";
-
-/** Isracard ענף → user category */
-const SECTOR_TO_CATEGORY: Record<string, string> = {
-  "מכולת/סופר": "طعام خارج",
-  מעדניות: "طعام خارج",
-  דלק: "أخرى",
-  "מסעדות/קפה": "قهوة",
-  שונות: "أخرى",
-  "תש' רשויות": "فواتير",
-  פארמה: "أخرى",
-  הלבשה: "ملابس",
-  תחבורה: "أخرى",
-  "שירותי רכב": "أخرى",
-};
 
 type Row = {
   /** DD/MM/YY transaction date from statement */
@@ -104,11 +91,6 @@ function occurredAtForRow(row: Row): Date {
   return txn;
 }
 
-function categoryFor(row: Row): string {
-  if (!row.sector) return "اشتراكات";
-  return SECTOR_TO_CATEGORY[row.sector] ?? "أخرى";
-}
-
 function isMarch2026(d: Date) {
   return d.getUTCFullYear() === 2026 && d.getUTCMonth() === 2;
 }
@@ -154,7 +136,7 @@ async function main() {
       continue;
     }
 
-    const catName = categoryFor(row);
+    const catName = categorizeExpense(row.merchant, row.sector);
     const description = row.merchant.trim();
     const amount = row.amount;
 
