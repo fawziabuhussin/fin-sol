@@ -460,14 +460,14 @@ export function MonthlyDashboard({
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
+      <Card className="overflow-hidden">
+        <CardHeader className="pb-2 sm:pb-4">
           <CardTitle className="text-base sm:text-lg">مقارنة سنوية</CardTitle>
-          <p className="text-sm text-slate-500">
-            الدخل والمصروفات شهرياً مع خط يوضّح الصافي
+          <p className="text-xs text-slate-500 sm:text-sm">
+            الدخل والمصروفات شهرياً — المسّ على الرسم للتفاصيل
           </p>
         </CardHeader>
-        <CardContent>
+        <CardContent className="px-3 pb-4 pt-0 sm:px-6 sm:pb-6">
           <YearlyTrendChart data={trend} year={year} />
         </CardContent>
       </Card>
