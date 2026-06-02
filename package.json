@@ -12,6 +12,7 @@
     "db:studio": "prisma studio",
     "import:excel": "tsx scripts/import-excel.ts",
     "dedupe:plan-expenses": "tsx scripts/dedupe-plan-expenses.ts",
+    "import:isracard-march": "tsx scripts/import-isracard-march-2026.ts",
     "postinstall": "prisma generate"
   },
   "dependencies": {
