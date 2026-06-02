@@ -118,8 +118,12 @@ export async function syncAllSalaryIncomeForUser(
   });
 
   for (const slip of slips) {
-    const wrongDate = new Date(
-      Date.UTC(slip.periodYear, slip.periodMonth - 1, 1)
+    const nextMonth =
+      slip.periodMonth === 12
+        ? { year: slip.periodYear + 1, month: 1 }
+        : { year: slip.periodYear, month: slip.periodMonth + 1 };
+    const shiftedDate = new Date(
+      Date.UTC(nextMonth.year, nextMonth.month - 1, 1)
     );
     await db.transaction.deleteMany({
       where: {
@@ -127,7 +131,7 @@ export async function syncAllSalaryIncomeForUser(
         type: TransactionType.INCOME,
         salarySlipId: null,
         description: slip.employer.name,
-        occurredAt: wrongDate,
+        occurredAt: shiftedDate,
       },
     });
     await syncSalarySlipIncome(slip.id, db);

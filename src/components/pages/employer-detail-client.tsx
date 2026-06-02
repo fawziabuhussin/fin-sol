@@ -28,7 +28,6 @@ import { cn } from "@/lib/utils";
 type MonthRow = {
   month: number;
   label: string;
-  incomeMonthLabel: string;
   slipId: string | null;
   exists: boolean;
   worked: boolean;
@@ -370,7 +369,7 @@ export function EmployerDetailClient({ detail }: { detail: EmployerDetail }) {
         <CardHeader>
           <CardTitle className="text-base sm:text-lg">رواتب {detail.year}</CardTitle>
           <p className="text-xs text-slate-500">
-            راتب كل شهر يُسجّل تلقائياً كدخل في الشهر التالي في المعاملات.
+            يُزامَن الراتب تلقائياً مع دخل نفس الشهر في المعاملات.
           </p>
         </CardHeader>
         <CardContent className="space-y-2">
@@ -409,8 +408,8 @@ export function EmployerDetailClient({ detail }: { detail: EmployerDetail }) {
                       <p className="text-xs text-slate-500">
                         {row.worked
                           ? row.exists
-                            ? `صافي ${formatCurrency(row.effectiveNet)}${row.paid && row.paidAt ? ` · قُبض ${row.paidAt}` : ""} · دخل في ${row.incomeMonthLabel}`
-                            : `لم يُسجّل بعد · دخل في ${row.incomeMonthLabel}`
+                            ? `صافي ${formatCurrency(row.effectiveNet)}${row.paid && row.paidAt ? ` · قُبض ${row.paidAt}` : ""}`
+                            : "لم يُسجّل بعد"
                           : "توقف عن العمل — لا يُحتسب"}
                       </p>
                     </div>

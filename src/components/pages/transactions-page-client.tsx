@@ -550,8 +550,7 @@ export function TransactionsPageClient({
                 لتغيير المبلغ أو التاريخ، افتح صفحة جهة العمل في متابعة الراتب.
               </p>
               <p className="mt-2 text-xs text-slate-500">
-                راتب شهر معيّن يُسجّل كدخل في الشهر التالي (مثلاً: راتب مايو → دخل
-                يونيو).
+                يُحدَّث المبلغ تلقائياً في المعاملات لنفس شهر الراتب.
               </p>
               <div className="mt-5 flex flex-col gap-2 sm:flex-row">
                 {salaryBlock.employerId ? (

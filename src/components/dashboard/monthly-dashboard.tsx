@@ -3,16 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Cell,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
+import { YearlyTrendChart } from "@/components/dashboard/yearly-trend-chart";
 import {
   ArrowDownLeft,
   ArrowUpRight,
@@ -471,39 +462,13 @@ export function MonthlyDashboard({
 
       <Card>
         <CardHeader>
-          <CardTitle>مقارنة سنوية — دخل vs مصروفات</CardTitle>
+          <CardTitle className="text-base sm:text-lg">مقارنة سنوية</CardTitle>
+          <p className="text-sm text-slate-500">
+            الدخل والمصروفات شهرياً مع خط يوضّح الصافي
+          </p>
         </CardHeader>
-        <CardContent className="h-72 w-full overflow-x-auto sm:h-72">
-          <div className="min-w-[320px]">
-          <ResponsiveContainer width="100%" height={280}>
-            <BarChart data={trend} margin={{ top: 8, right: 4, left: -12, bottom: 40 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-              <XAxis
-                dataKey="label"
-                tick={{ fontSize: 10, fill: "#64748b" }}
-                interval={0}
-                angle={-45}
-                textAnchor="end"
-                height={56}
-              />
-              <YAxis tick={{ fontSize: 10, fill: "#64748b" }} width={40} tickFormatter={(v) => `${Math.round(Number(v) / 1000)}k`} />
-              <Tooltip
-                formatter={(value) => formatCurrency(Number(value))}
-                contentStyle={{ borderRadius: 12, border: "1px solid #e2e8f0" }}
-              />
-              <Bar dataKey="income" name="الدخل" fill="#059669" radius={[4, 4, 0, 0]} maxBarSize={28} />
-              <Bar dataKey="expenses" name="المصروفات" fill="#e11d48" radius={[4, 4, 0, 0]} maxBarSize={28} />
-              <Bar dataKey="net" name="الصافي" radius={[4, 4, 0, 0]} maxBarSize={28}>
-                {trend.map((entry) => (
-                  <Cell
-                    key={entry.month}
-                    fill={entry.net >= 0 ? "#6366f1" : "#f97316"}
-                  />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-          </div>
+        <CardContent>
+          <YearlyTrendChart data={trend} year={year} />
         </CardContent>
       </Card>
 
