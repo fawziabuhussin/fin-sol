@@ -14,6 +14,7 @@
     "dedupe:plan-expenses": "tsx scripts/dedupe-plan-expenses.ts",
     "import:isracard-march": "tsx scripts/import-isracard-march-2026.ts",
     "import:isracard-march-gold": "tsx scripts/import-isracard-march-2026-gold.ts",
+    "import:isracard-feb": "tsx scripts/import-isracard-feb-2026.ts",
     "postinstall": "prisma generate"
   },
   "dependencies": {
