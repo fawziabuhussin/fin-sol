@@ -11,6 +11,7 @@
     "db:migrate": "prisma migrate dev",
     "db:studio": "prisma studio",
     "import:excel": "tsx scripts/import-excel.ts",
+    "dedupe:plan-expenses": "tsx scripts/dedupe-plan-expenses.ts",
     "postinstall": "prisma generate"
   },
   "dependencies": {

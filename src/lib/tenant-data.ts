@@ -15,6 +15,7 @@ import {
   repairPaidInstallmentTransactions,
   sumPaidInstallments,
 } from "@/lib/installment-transactions";
+import { dedupePlanBuildingExpensesForUser } from "@/lib/plan-expense-dedupe";
 import {
   CategoryKind,
   InstallmentStatus,
@@ -768,6 +769,13 @@ export async function getProjectDetail(userId: string, projectId: string) {
   });
 
   if (!project) return null;
+
+  const dedupe = await dedupePlanBuildingExpensesForUser(userId, prisma, {
+    projectId,
+  });
+  if (dedupe.deleted > 0) {
+    return getProjectDetail(userId, projectId);
+  }
 
   const activePlan = project.paymentPlans[0] ?? null;
 
