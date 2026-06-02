@@ -22,7 +22,17 @@ export const savingsEntrySchema = z.object({
   amount: z.coerce.number().min(0),
   paid: z.coerce.boolean().optional(),
   isPayout: z.coerce.boolean().optional(),
+  /** ISO date; defaults to last day of period month when marking paid */
+  paidAt: z.string().optional().or(z.literal("")),
   notes: z.string().max(300).optional().or(z.literal("")),
+});
+
+/** Mark multiple schedule months paid in one request (e.g. one transfer covering several months). */
+export const savingsBulkEntrySchema = z.object({
+  startPeriodYear: z.coerce.number().int().min(2020).max(2100),
+  startPeriodMonth: z.coerce.number().int().min(1).max(12),
+  totalPaid: z.coerce.number().positive(),
+  monthlyAmount: z.coerce.number().positive().optional(),
 });
 
 export type SavingsEntryInput = z.infer<typeof savingsEntrySchema>;

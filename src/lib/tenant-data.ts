@@ -10,6 +10,7 @@ import {
 } from "@/lib/annual-report";
 import { monthRangeUTC, utcMonth, yearRangeUTC } from "@/lib/dates";
 import { INCOME_SOURCES, monthLabel } from "@/lib/finance-labels";
+import { paidAtForPeriod } from "@/lib/savings-schedule";
 import type { SalarySlipBreakdown } from "@/lib/payslip-types";
 import {
   repairPaidInstallmentTransactions,
@@ -132,7 +133,7 @@ export async function getMonthlyOverview(
 ) {
   const { start, end } = monthRangeUTC(year, month);
 
-  const [transactions, salarySlips, savingsPlans] =
+  const [transactions, salarySlips, savingsPlans, savingsEntriesPaid] =
     await Promise.all([
       prisma.transaction.findMany({
         where: { userId, occurredAt: { gte: start, lte: end } },
@@ -146,6 +147,15 @@ export async function getMonthlyOverview(
       prisma.savingsPlan.findMany({
         where: { userId, status: "ACTIVE" },
         orderBy: { createdAt: "desc" },
+      }),
+      prisma.savingsEntry.findMany({
+        where: {
+          plan: { userId },
+          periodYear: year,
+          periodMonth: month,
+          paid: true,
+        },
+        select: { planId: true, amount: true },
       }),
     ]);
 
@@ -199,10 +209,20 @@ export async function getMonthlyOverview(
 
   const totalExpenses = dailyExpenses + buildExpenses;
 
+  const savingsFromEntries = savingsEntriesPaid.reduce(
+    (sum, e) => sum + decimalToNumber(e.amount),
+    0
+  );
+  const paidPlanIds = new Set(savingsEntriesPaid.map((e) => e.planId));
   const savingsPlanned = savingsPlans
-    .filter((plan) => planAppliesInMonth(plan, year, month))
+    .filter(
+      (plan) =>
+        planAppliesInMonth(plan, year, month) && !paidPlanIds.has(plan.id)
+    )
     .reduce((sum, plan) => sum + decimalToNumber(plan.monthlyContribution), 0);
-  const savingsTotal = savingsContributions + savingsPlanned;
+  const savingsContributionsActual =
+    savingsFromEntries > 0 ? savingsFromEntries : savingsContributions;
+  const savingsTotal = savingsContributionsActual + savingsPlanned;
 
   const undertracked = isUndertrackedExpenseMonth(year, month);
   const expenseAdjust = undertracked
@@ -235,7 +255,7 @@ export async function getMonthlyOverview(
       byCategory: expenseByCategory,
     },
     savings: {
-      contributions: savingsContributions,
+      contributions: savingsContributionsActual,
       planned: savingsPlanned,
       total: savingsTotal,
       plans: savingsPlans.map((plan) => ({
@@ -1362,7 +1382,17 @@ export async function getSavingsPlanDetail(userId: string, planId: string) {
       amount: entry ? decimalToNumber(entry.amount) : monthly,
       paid: entry?.paid ?? false,
       isPayout: entry?.isPayout ?? payoutKey === key,
-      paidAt: entry?.paidAt?.toISOString().slice(0, 10) ?? null,
+      paidAt: entry?.paid
+        ? (() => {
+            const expected = paidAtForPeriod(y, m).toISOString().slice(0, 10);
+            if (!entry.paidAt) return expected;
+            const py = entry.paidAt.getUTCFullYear();
+            const pm = entry.paidAt.getUTCMonth() + 1;
+            return py === y && pm === m
+              ? entry.paidAt.toISOString().slice(0, 10)
+              : expected;
+          })()
+        : null,
       notes: entry?.notes ?? null,
     };
   });

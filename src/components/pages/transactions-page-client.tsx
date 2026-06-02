@@ -25,7 +25,7 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { formatCurrency, cn } from "@/lib/utils";
-import { monthLabel } from "@/lib/finance-labels";
+import { AR_MONTHS, monthLabel } from "@/lib/finance-labels";
 
 type TransactionRow = {
   id: string;
@@ -121,6 +121,12 @@ export function TransactionsPageClient({
     filters.month === "all"
       ? `سنة ${filters.year}`
       : `${monthLabel(filters.month)} ${filters.year}`;
+
+  const currentYear = new Date().getUTCFullYear();
+  const yearOptions = Array.from(
+    { length: currentYear - 2019 },
+    (_, i) => 2020 + i
+  );
 
   const net = summary.income - summary.expense;
 
@@ -356,9 +362,39 @@ export function TransactionsPageClient({
               >
                 <ChevronRight className="h-4 w-4" />
               </button>
-              <span className="min-w-[110px] text-center text-sm font-bold text-slate-800">
-                {periodLabel}
-              </span>
+              <Select
+                value={filters.month === "all" ? "" : String(filters.month)}
+                onChange={(e) => {
+                  const v = Number(e.target.value);
+                  if (!v) return;
+                  apply({ month: v });
+                }}
+                className="h-8 min-w-[6.5rem] w-auto shrink-0 border-0 bg-transparent py-0 pe-6 ps-2 text-sm font-bold text-slate-800 focus-visible:ring-0"
+                aria-label="اختر الشهر"
+              >
+                {filters.month === "all" && (
+                  <option value="" disabled>
+                    اختر شهر
+                  </option>
+                )}
+                {AR_MONTHS.map((label, idx) => (
+                  <option key={label} value={idx + 1}>
+                    {label}
+                  </option>
+                ))}
+              </Select>
+              <Select
+                value={String(filters.year)}
+                onChange={(e) => apply({ year: Number(e.target.value) })}
+                className="h-8 w-[4.25rem] shrink-0 border-0 border-s border-slate-200 bg-transparent py-0 pe-5 ps-2 text-sm font-bold text-slate-800 focus-visible:ring-0"
+                aria-label="اختر السنة"
+              >
+                {yearOptions.map((y) => (
+                  <option key={y} value={y}>
+                    {y}
+                  </option>
+                ))}
+              </Select>
               <button
                 type="button"
                 onClick={() => shiftMonth(1)}
