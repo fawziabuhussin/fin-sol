@@ -51,6 +51,7 @@ export async function PATCH(
         ...(data.title !== undefined ? { title: data.title } : {}),
         ...(data.quantity !== undefined ? { quantity: data.quantity } : {}),
         ...(data.unitPrice !== undefined ? { unitPrice: data.unitPrice } : {}),
+        ...(data.goldKarat !== undefined ? { goldKarat: data.goldKarat } : {}),
         ...(data.priceCurrency !== undefined
           ? { priceCurrency: data.priceCurrency }
           : {}),

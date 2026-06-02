@@ -35,6 +35,7 @@ export async function POST(req: Request) {
         title: data.title,
         quantity: data.quantity,
         unitPrice: data.unitPrice,
+        goldKarat: data.kind === "GOLD" ? (data.goldKarat ?? 21) : null,
         priceCurrency: data.priceCurrency,
         valueIls,
         notes: data.notes || null,

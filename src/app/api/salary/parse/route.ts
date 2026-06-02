@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/session";
 import { extractTextFromFile, parsePayslipText } from "@/lib/payslip-parser";
 
+export const runtime = "nodejs";
+
 export async function POST(req: Request) {
   try {
     await requireUser();
@@ -12,12 +14,20 @@ export async function POST(req: Request) {
     }
 
     const text = await extractTextFromFile(file);
-    const parsed = parsePayslipText(text);
+    const parsed = parsePayslipText(text, file.name);
 
     return NextResponse.json({
-      ...parsed,
+      gross: parsed.gross,
+      net: parsed.net,
+      tax: parsed.tax,
+      pension: parsed.pension,
+      kerenHishtalmut: parsed.kerenHishtalmut,
+      periodYear: parsed.periodYear,
+      periodMonth: parsed.periodMonth,
+      breakdown: parsed.breakdown,
+      employerHint: parsed.employerHint,
+      confidence: parsed.confidence,
       fileName: file.name,
-      slipFileUrl: `/uploads/payslips/${file.name}`,
     });
   } catch {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

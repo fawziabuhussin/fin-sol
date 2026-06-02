@@ -1,5 +1,38 @@
 import { z } from "zod";
 
+const slipBreakdownSchema = z
+  .object({
+    taxes: z.object({
+      nationalInsurance: z.number(),
+      healthInsurance: z.number(),
+      incomeTax: z.number(),
+      other: z.number().optional(),
+      total: z.number(),
+    }),
+    pension: z.object({
+      employee: z.number(),
+      employer: z.number(),
+      severanceEmployer: z.number().optional(),
+      lines: z
+        .array(
+          z.object({
+            fund: z.string().optional(),
+            type: z.string().optional(),
+            employee: z.number(),
+            employer: z.number(),
+            base: z.number().optional(),
+          })
+        )
+        .optional(),
+    }),
+    keren: z.object({
+      employee: z.number(),
+      employer: z.number(),
+    }),
+    otherDeductions: z.number().optional(),
+  })
+  .optional();
+
 export const salarySchema = z.object({
   employerId: z.string().min(1),
   periodYear: z.coerce.number().int().min(2020).max(2100),
@@ -15,6 +48,7 @@ export const salarySchema = z.object({
   paid: z.coerce.boolean().optional(),
   notes: z.string().max(500).optional().or(z.literal("")),
   slipFileUrl: z.string().optional().or(z.literal("")),
+  slipBreakdown: slipBreakdownSchema,
 });
 
 export type SalaryInput = z.infer<typeof salarySchema>;

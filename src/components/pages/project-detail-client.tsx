@@ -66,6 +66,7 @@ type ProjectDetail = {
     description: string | null;
     notes: string | null;
     paymentMethod: string | null;
+    installmentId: string | null;
   }[];
   paymentPlans: {
     id: string;
@@ -164,6 +165,13 @@ export function ProjectDetailClient({
     label: "",
     amount: 0,
     dueDate: "",
+    paidAt: "",
+    notes: "",
+  });
+  const [editingTxId, setEditingTxId] = useState<string | null>(null);
+  const [txEditForm, setTxEditForm] = useState({
+    amount: 0,
+    occurredAt: "",
     notes: "",
   });
   const [adding, setAdding] = useState(false);
@@ -175,21 +183,32 @@ export function ProjectDetailClient({
   });
 
   const startEditInstallment = (inst: Installment) => {
+    setEditingTxId(null);
     setEditingId(inst.id);
     setEditForm({
       label: inst.label,
       amount: inst.amount,
       dueDate: inst.dueDate,
+      paidAt: inst.paidAt ?? inst.dueDate,
       notes: inst.notes ?? "",
     });
   };
 
-  const saveInstallment = (id: string) => {
+  const saveInstallment = (id: string, isPaid: boolean) => {
     startTransition(async () => {
+      const body: Record<string, unknown> = {
+        label: editForm.label,
+        amount: editForm.amount,
+        dueDate: editForm.dueDate,
+        notes: editForm.notes,
+      };
+      if (isPaid && editForm.paidAt) {
+        body.occurredAt = editForm.paidAt;
+      }
       const res = await fetch(`/api/installments/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(editForm),
+        body: JSON.stringify(body),
       });
       if (!res.ok) {
         toast.error("فشل تعديل الدفعة");
@@ -201,7 +220,14 @@ export function ProjectDetailClient({
     });
   };
 
-  const deleteInstallment = (id: string) => {
+  const deleteInstallment = (id: string, label: string) => {
+    if (
+      !confirm(
+        `حذف «${label}»؟ سيتم حذف الدفعة من الجدول وإزالة المدفوع المرتبط بها من السجل.`
+      )
+    ) {
+      return;
+    }
     startTransition(async () => {
       const res = await fetch(`/api/installments/${id}`, { method: "DELETE" });
       if (!res.ok) {
@@ -209,6 +235,67 @@ export function ProjectDetailClient({
         return;
       }
       toast.success("تم حذف الدفعة");
+      router.refresh();
+    });
+  };
+
+  const startEditTransaction = (tx: ProjectDetail["transactions"][0]) => {
+    setEditingId(null);
+    setEditingTxId(tx.id);
+    setTxEditForm({
+      amount: tx.amount,
+      occurredAt: tx.occurredAt,
+      notes: tx.notes ?? "",
+    });
+  };
+
+  const saveTransaction = (tx: ProjectDetail["transactions"][0]) => {
+    startTransition(async () => {
+      const url = tx.installmentId
+        ? `/api/installments/${tx.installmentId}`
+        : `/api/transactions/${tx.id}`;
+      const body = tx.installmentId
+        ? {
+            amount: txEditForm.amount,
+            occurredAt: txEditForm.occurredAt,
+            dueDate: txEditForm.occurredAt,
+            notes: txEditForm.notes,
+          }
+        : {
+            type: "EXPENSE",
+            amount: txEditForm.amount,
+            occurredAt: txEditForm.occurredAt,
+            description: tx.description ?? "دفعة",
+            notes: txEditForm.notes,
+            projectId: detail.id,
+          };
+      const res = await fetch(url, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        toast.error("فشل تعديل المدفوع");
+        return;
+      }
+      toast.success("تم تعديل المدفوع");
+      setEditingTxId(null);
+      router.refresh();
+    });
+  };
+
+  const deleteTransaction = (tx: ProjectDetail["transactions"][0]) => {
+    const msg = tx.installmentId
+      ? "حذف هذا المدفوع من السجل؟ ستُعاد الدفعة في الجدول إلى «معلّقة»."
+      : "حذف هذا المدفوع من السجل؟";
+    if (!confirm(msg)) return;
+    startTransition(async () => {
+      const res = await fetch(`/api/transactions/${tx.id}`, { method: "DELETE" });
+      if (!res.ok) {
+        toast.error("فشل الحذف");
+        return;
+      }
+      toast.success("تم الحذف");
       router.refresh();
     });
   };
@@ -596,7 +683,7 @@ export function ProjectDetailClient({
                       </button>
                       <button
                         type="button"
-                        onClick={() => deleteInstallment(inst.id)}
+                        onClick={() => deleteInstallment(inst.id, inst.label)}
                         disabled={isPending}
                         className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
                         aria-label="حذف"
@@ -626,11 +713,19 @@ export function ProjectDetailClient({
                           />
                         </div>
                         <div>
-                          <Label className="text-xs">تاريخ الاستحقاق</Label>
+                          <Label className="text-xs">
+                            {isPaid ? "تاريخ الدفع" : "تاريخ الاستحقاق"}
+                          </Label>
                           <Input
                             type="date"
-                            value={editForm.dueDate}
-                            onChange={(e) => setEditForm((f) => ({ ...f, dueDate: e.target.value }))}
+                            value={isPaid ? editForm.paidAt : editForm.dueDate}
+                            onChange={(e) =>
+                              setEditForm((f) =>
+                                isPaid
+                                  ? { ...f, paidAt: e.target.value }
+                                  : { ...f, dueDate: e.target.value }
+                              )
+                            }
                           />
                         </div>
                         <div>
@@ -642,12 +737,16 @@ export function ProjectDetailClient({
                         </div>
                       </div>
                       {isPaid && (
-                        <p className="mt-2 text-xs text-amber-700">
-                          هذه الدفعة مدفوعة — تعديل المبلغ سيحدّث مصروف البناء المرتبط بها.
+                        <p className="mt-2 text-xs text-emerald-700">
+                          تعديل المبلغ أو التاريخ يحدّث السجل المرتبط في «سجل المدفوعات».
                         </p>
                       )}
                       <div className="mt-2 flex gap-2">
-                        <Button size="sm" disabled={isPending} onClick={() => saveInstallment(inst.id)}>
+                        <Button
+                          size="sm"
+                          disabled={isPending}
+                          onClick={() => saveInstallment(inst.id, isPaid)}
+                        >
                           <Save className="h-4 w-4" /> حفظ
                         </Button>
                       </div>
@@ -683,28 +782,116 @@ export function ProjectDetailClient({
             (showHistory
               ? detail.transactions
               : detail.transactions.slice(0, 5)
-            ).map((tx) => (
-              <div
-                key={tx.id}
-                className="flex flex-col gap-1 rounded-xl border border-slate-100 p-3 sm:flex-row sm:items-center sm:justify-between"
-              >
-                <div className="min-w-0">
-                  <p className="truncate font-medium text-slate-900">
-                    {tx.description || "دفعة"}
-                  </p>
-                  <p className="text-xs text-slate-500">
-                    {tx.occurredAt}
-                    {tx.paymentMethod && ` · ${tx.paymentMethod}`}
-                  </p>
-                  {tx.notes && (
-                    <p className="text-xs text-slate-600">{tx.notes}</p>
+            ).map((tx) => {
+              const isEditingTx = editingTxId === tx.id;
+              return (
+                <div
+                  key={tx.id}
+                  className="rounded-xl border border-slate-100 p-3"
+                >
+                  <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="truncate font-medium text-slate-900">
+                          {tx.description || "دفعة"}
+                        </p>
+                        {tx.installmentId && (
+                          <Badge variant="default" className="text-[10px]">
+                            مرتبط بجدول الدفعات
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="text-xs text-slate-500">
+                        {tx.occurredAt}
+                        {tx.paymentMethod && ` · ${tx.paymentMethod}`}
+                      </p>
+                      {tx.notes && (
+                        <p className="text-xs text-slate-600">{tx.notes}</p>
+                      )}
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <p className="font-bold text-emerald-700">
+                        {formatCurrency(tx.amount)}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          isEditingTx ? setEditingTxId(null) : startEditTransaction(tx)
+                        }
+                        className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                        aria-label="تعديل"
+                      >
+                        {isEditingTx ? (
+                          <X className="h-4 w-4" />
+                        ) : (
+                          <Pencil className="h-4 w-4" />
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => deleteTransaction(tx)}
+                        disabled={isPending}
+                        className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+                        aria-label="حذف"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+                  {isEditingTx && (
+                    <div className="mt-3 border-t border-slate-100 pt-3">
+                      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                        <div>
+                          <Label className="text-xs">المبلغ</Label>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            value={txEditForm.amount || ""}
+                            onChange={(e) =>
+                              setTxEditForm((f) => ({
+                                ...f,
+                                amount: Number(e.target.value),
+                              }))
+                            }
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-xs">تاريخ الدفع</Label>
+                          <Input
+                            type="date"
+                            value={txEditForm.occurredAt}
+                            onChange={(e) =>
+                              setTxEditForm((f) => ({
+                                ...f,
+                                occurredAt: e.target.value,
+                              }))
+                            }
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-xs">ملاحظات</Label>
+                          <Input
+                            value={txEditForm.notes}
+                            onChange={(e) =>
+                              setTxEditForm((f) => ({ ...f, notes: e.target.value }))
+                            }
+                          />
+                        </div>
+                      </div>
+                      <div className="mt-2 flex gap-2">
+                        <Button
+                          size="sm"
+                          disabled={isPending}
+                          onClick={() => saveTransaction(tx)}
+                        >
+                          <Save className="h-4 w-4" /> حفظ
+                        </Button>
+                      </div>
+                    </div>
                   )}
                 </div>
-                <p className="shrink-0 font-bold text-emerald-700">
-                  {formatCurrency(tx.amount)}
-                </p>
-              </div>
-            ))
+              );
+            })
           )}
         </CardContent>
       </Card>

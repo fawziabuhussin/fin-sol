@@ -41,6 +41,7 @@ import { cn } from "@/lib/utils";
 
 export type AnnualShowcaseData = {
   year: number;
+  throughMonth: number;
   totals: {
     income: number;
     salary: number;
@@ -49,6 +50,23 @@ export type AnnualShowcaseData = {
     build: number;
     savings: number;
     net: number;
+    netAfterSavings: number;
+  };
+  yearForecast: {
+    throughMonth: number;
+    remainingMonths: number;
+    rows: {
+      label: string;
+      actual: number;
+      projected: number;
+      expectedTotal: number;
+    }[];
+    expectedTotal: {
+      income: number;
+      expenses: number;
+      savings: number;
+      net: number;
+    };
   };
   monthly: {
     month: number;
@@ -56,10 +74,16 @@ export type AnnualShowcaseData = {
     income: number;
     salary: number;
     expenses: number;
+    expensesRaw: number;
+    expensesAdjusted: boolean;
+    undertracked: boolean;
     daily: number;
     build: number;
     savings: number;
+    savingsContributions: number;
+    savingsPlanned: number;
     net: number;
+    netAfterSavings: number;
     hasActivity: boolean;
   }[];
   incomeBySource: {
@@ -134,14 +158,23 @@ export function AnnualShowcaseClient({ data }: { data: AnnualShowcaseData }) {
     fullLabel: m.label,
     income: m.income,
     expenses: m.expenses,
+    savings: m.savings,
     net: m.net,
     month: m.month,
+  }));
+
+  const savingsChartData = data.monthly.map((m) => ({
+    name: m.label.slice(0, 3),
+    fullLabel: m.label,
+    planned: m.savingsPlanned,
+    recorded: m.savingsContributions,
+    total: m.savings,
   }));
 
   const cumulativeNet = data.monthly.reduce<{ label: string; cumulative: number }[]>(
     (acc, m) => {
       const prev = acc.length ? acc[acc.length - 1].cumulative : 0;
-      acc.push({ label: m.label, cumulative: prev + m.net });
+      acc.push({ label: m.label, cumulative: prev + m.netAfterSavings });
       return acc;
     },
     []
@@ -168,8 +201,8 @@ export function AnnualShowcaseClient({ data }: { data: AnnualShowcaseData }) {
               ملخّص {year}
             </h1>
             <p className="mt-2 max-w-xl text-sm text-indigo-100 sm:text-base">
-              نظرة شاملة على الدخل والمصروفات والادخار ومشروع البناء — شهر
-              بشهر مع استنتاجات واضحة.
+              نظرة شاملة حتى {data.monthly[data.monthly.length - 1]?.label ?? "—"}{" "}
+              {year} — بدون أشهر مستقبلية غير معروفة، مع توقعات نهاية السنة.
             </p>
           </div>
 
@@ -222,6 +255,57 @@ export function AnnualShowcaseClient({ data }: { data: AnnualShowcaseData }) {
           ))}
         </div>
       </motion.section>
+
+      {/* Year-end forecast */}
+      <Card className="border-emerald-100 shadow-md">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-lg">
+            <CalendarRange className="h-5 w-5 text-emerald-700" />
+            توقعات نهاية السنة {year}
+          </CardTitle>
+          <p className="text-sm text-slate-500">
+            بناءً على ما حدث حتى شهر{" "}
+            {data.monthly[data.monthly.length - 1]?.label ?? data.throughMonth} — المتبقي{" "}
+            {data.yearForecast.remainingMonths} أشهر بمتوسط الأشهر المسجّلة
+          </p>
+        </CardHeader>
+        <CardContent className="overflow-x-auto">
+          <table className="w-full min-w-[520px] text-sm">
+            <thead>
+              <tr className="border-b border-slate-100 text-right text-xs text-slate-500">
+                <th className="pb-3 pr-2 font-medium">البند</th>
+                <th className="pb-3 font-medium">فعلي حتى الآن</th>
+                <th className="pb-3 font-medium">متوقع للأشهر المتبقية</th>
+                <th className="pb-3 pl-2 font-medium">المتوقع للسنة كاملة</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.yearForecast.rows.map((row) => (
+                <tr key={row.label} className="border-b border-slate-50">
+                  <td className="py-3 pr-2 font-semibold text-slate-800">
+                    {row.label}
+                  </td>
+                  <td className="py-3 text-slate-700">
+                    {formatCurrency(row.actual)}
+                  </td>
+                  <td className="py-3 text-slate-500">
+                    {data.yearForecast.remainingMonths > 0
+                      ? formatCurrency(row.projected)
+                      : "—"}
+                  </td>
+                  <td className="py-3 pl-2 font-bold text-indigo-800">
+                    {formatCurrency(row.expectedTotal)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="mt-3 text-xs text-slate-500 leading-relaxed">
+            الصافي يخصم الادخار (جمعية وخطط نشطة). الأشهر يناير–مارس: المصروفات
+            مقدّرة (~97% من الدخل) لأن التتبع لم يكن مكتملاً والمال كان مُنفَقاً فعلياً.
+          </p>
+        </CardContent>
+      </Card>
 
       {/* Conclusion / Insights */}
       <Card className="border-indigo-100 shadow-md">
@@ -338,6 +422,7 @@ export function AnnualShowcaseClient({ data }: { data: AnnualShowcaseData }) {
         <Card>
           <CardHeader>
             <CardTitle className="text-base">الدخل vs المصروفات — شهرياً</CardTitle>
+            <p className="text-xs text-slate-500">فقط الأشهر حتى اليوم — بدون تخمين للمستقبل</p>
           </CardHeader>
           <CardContent className="h-72">
             <ResponsiveContainer width="100%" height="100%">
@@ -359,10 +444,41 @@ export function AnnualShowcaseClient({ data }: { data: AnnualShowcaseData }) {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="border-violet-100">
           <CardHeader>
-            <CardTitle className="text-base">الصافي التراكمي</CardTitle>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <PiggyBank className="h-5 w-5 text-violet-700" />
+              الادخار والجمعية — شهرياً
+            </CardTitle>
+            <p className="text-xs text-slate-500">
+              مساهمات مسجّلة + التزامات الخطط النشطة (ليست دخلاً)
+            </p>
           </CardHeader>
+          <CardContent className="h-72">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={savingsChartData} margin={{ top: 8, right: 8, left: -8, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+                <YAxis tick={{ fontSize: 10 }} tickFormatter={(v) => `${Math.round(Number(v) / 1000)}k`} />
+                <Tooltip
+                  formatter={(v) => formatCurrency(Number(v))}
+                  labelFormatter={(_, payload) =>
+                    payload?.[0]?.payload?.fullLabel ?? ""
+                  }
+                />
+                <Legend />
+                <Bar dataKey="planned" name="التزام شهري" fill="#a78bfa" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="recorded" name="مسجّل في المعاملات" fill="#7c3aed" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">الصافي التراكمي (بعد الادخار)</CardTitle>
+        </CardHeader>
           <CardContent className="h-72">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={cumulativeNet} margin={{ top: 8, right: 8, left: -8, bottom: 0 }}>
@@ -388,7 +504,6 @@ export function AnnualShowcaseClient({ data }: { data: AnnualShowcaseData }) {
             </ResponsiveContainer>
           </CardContent>
         </Card>
-      </div>
 
       {/* Monthly table */}
       <Card>
@@ -398,8 +513,13 @@ export function AnnualShowcaseClient({ data }: { data: AnnualShowcaseData }) {
             ملخّص الأشهر ({data.activeMonthsCount} نشط)
           </CardTitle>
           <p className="text-sm text-slate-500">
-            متوسط: دخل {formatCurrency(data.averages.income)} · مصروف{" "}
-            {formatCurrency(data.averages.expenses)}
+            متوسط (أشهر مسجّلة): دخل {formatCurrency(data.averages.income)} · مصروف{" "}
+            {formatCurrency(data.averages.expenses)} · ادخار{" "}
+            {formatCurrency(
+              data.monthly.length
+                ? totals.savings / data.monthly.length
+                : 0
+            )}
           </p>
         </CardHeader>
         <CardContent className="overflow-x-auto">
@@ -431,6 +551,9 @@ export function AnnualShowcaseClient({ data }: { data: AnnualShowcaseData }) {
                     >
                       {m.label}
                     </Link>
+                    {m.expensesAdjusted && (
+                      <span className="mr-2 text-[10px] text-amber-600">تقدير</span>
+                    )}
                   </td>
                   <td className="py-3 font-medium text-emerald-700">
                     {m.income > 0 ? formatCurrency(m.income) : "—"}
@@ -451,15 +574,15 @@ export function AnnualShowcaseClient({ data }: { data: AnnualShowcaseData }) {
                     <span
                       className={cn(
                         "inline-flex items-center gap-1 font-bold",
-                        m.net >= 0 ? "text-emerald-700" : "text-rose-700"
+                        m.netAfterSavings >= 0 ? "text-emerald-700" : "text-rose-700"
                       )}
                     >
-                      {m.net >= 0 ? (
+                      {m.netAfterSavings >= 0 ? (
                         <ArrowUpRight className="h-3.5 w-3.5" />
                       ) : (
                         <ArrowDownRight className="h-3.5 w-3.5" />
                       )}
-                      {m.hasActivity ? formatCurrency(m.net) : "—"}
+                      {m.hasActivity ? formatCurrency(m.netAfterSavings) : "—"}
                     </span>
                   </td>
                 </tr>
@@ -474,7 +597,18 @@ export function AnnualShowcaseClient({ data }: { data: AnnualShowcaseData }) {
                 <td className="py-3">{formatCurrency(totals.build)}</td>
                 <td className="py-3">{formatCurrency(totals.savings)}</td>
                 <td className="rounded-bl-xl py-3 pl-2 font-bold">
-                  {formatCurrency(totals.net)}
+                  {formatCurrency(totals.netAfterSavings)}
+                </td>
+              </tr>
+              <tr className="bg-indigo-900/90 text-white text-xs">
+                <td className="py-2 pr-2 font-medium" colSpan={1}>
+                  متوقع نهاية السنة
+                </td>
+                <td className="py-2" colSpan={5}>
+                  دخل {formatCurrency(data.yearForecast.expectedTotal.income)} · مصروف{" "}
+                  {formatCurrency(data.yearForecast.expectedTotal.expenses)} · ادخار{" "}
+                  {formatCurrency(data.yearForecast.expectedTotal.savings)} · صافي{" "}
+                  {formatCurrency(data.yearForecast.expectedTotal.net)}
                 </td>
               </tr>
             </tfoot>

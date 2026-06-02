@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/session";
+import { handleApiError } from "@/lib/api-error";
+import { syncLinkedInstallmentTransaction } from "@/lib/installment-transactions";
 import { transactionSchema } from "@/lib/validations/transactions";
+import { InstallmentStatus } from "@/generated/prisma/client";
 
 export async function PATCH(
   req: Request,
@@ -32,6 +35,12 @@ export async function PATCH(
     }
 
     const data = parsed.data;
+
+    const linkedInstallment = await prisma.projectInstallment.findFirst({
+      where: { transactionId: id },
+      include: { plan: { include: { project: true } } },
+    });
+
     const updated = await prisma.transaction.update({
       where: { id },
       data: {
@@ -48,9 +57,25 @@ export async function PATCH(
       },
     });
 
+    if (linkedInstallment) {
+      await prisma.projectInstallment.update({
+        where: { id: linkedInstallment.id },
+        data: {
+          amount: data.amount,
+          dueDate: new Date(data.occurredAt),
+        },
+      });
+      await syncLinkedInstallmentTransaction(linkedInstallment, {
+        amount: data.amount,
+        dueDate: new Date(data.occurredAt),
+        notes: data.notes ?? undefined,
+        occurredAt: new Date(data.occurredAt),
+      });
+    }
+
     return NextResponse.json(updated);
-  } catch {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  } catch (error) {
+    return handleApiError(error);
   }
 }
 
@@ -76,9 +101,23 @@ export async function DELETE(
       );
     }
 
+    const linkedInstallment = await prisma.projectInstallment.findFirst({
+      where: { transactionId: id },
+    });
+
+    if (linkedInstallment) {
+      await prisma.projectInstallment.update({
+        where: { id: linkedInstallment.id },
+        data: {
+          status: InstallmentStatus.PENDING,
+          transactionId: null,
+        },
+      });
+    }
+
     await prisma.transaction.delete({ where: { id } });
     return NextResponse.json({ ok: true });
-  } catch {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  } catch (error) {
+    return handleApiError(error);
   }
 }

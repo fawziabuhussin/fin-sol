@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useCallback, useEffect, useState, useTransition } from "react";
 import { motion } from "framer-motion";
 import {
   Bar,
@@ -17,7 +17,16 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { Coins, DollarSign, PiggyBank, Target, TrendingUp, Wallet } from "lucide-react";
+import {
+  Coins,
+  DollarSign,
+  PiggyBank,
+  RefreshCw,
+  Target,
+  TrendingUp,
+  Wallet,
+} from "lucide-react";
+import { GOLD_KARAT_OPTIONS } from "@/lib/market-rates";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -51,6 +60,7 @@ export type SavingsSummaryData = {
     title: string;
     quantity: number;
     unitPrice: number;
+    goldKarat: number;
     priceCurrency: string;
     valueIls: number;
     updatedAt: string;
@@ -72,15 +82,54 @@ function AssetCard({
   const [form, setForm] = useState({
     quantity: asset.quantity,
     unitPrice: asset.unitPrice,
+    goldKarat: asset.goldKarat ?? 21,
   });
+  const [rateMeta, setRateMeta] = useState<string | null>(null);
+  const [fetchingRate, setFetchingRate] = useState(false);
   const isGold = asset.kind === "GOLD";
+
+  const fetchLiveRate = useCallback(async () => {
+    setFetchingRate(true);
+    try {
+      const url = isGold
+        ? `/api/savings/market-rates?karat=${form.goldKarat}`
+        : "/api/savings/market-rates?karat=21";
+      const res = await fetch(url);
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error ?? "تعذّر جلب السعر");
+        return;
+      }
+      if (isGold) {
+        setForm((f) => ({ ...f, unitPrice: data.gold.pricePerGramIls }));
+        setRateMeta(
+          `سعر ${data.gold.karat}K: ${data.gold.pricePerGramIls.toLocaleString("ar-IL")} ₪/غرام · أونصة $${Math.round(data.gold.pricePerOzUsd).toLocaleString("en-US")}`
+        );
+      } else {
+        setForm((f) => ({ ...f, unitPrice: data.usdIls }));
+        setRateMeta(`سعر الصرف الرسمي: ${data.usdIls} ₪/$ · ${data.usdIlsDate}`);
+      }
+    } catch {
+      toast.error("تعذّر الاتصال بمصدر الأسعار");
+    } finally {
+      setFetchingRate(false);
+    }
+  }, [isGold, form.goldKarat]);
+
+  useEffect(() => {
+    fetchLiveRate();
+  }, [fetchLiveRate]);
 
   const save = () => {
     startTransition(async () => {
       const res = await fetch(`/api/savings/assets/${asset.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify(
+          isGold
+            ? form
+            : { quantity: form.quantity, unitPrice: form.unitPrice }
+        ),
       });
       if (!res.ok) {
         toast.error("فشل الحفظ");
@@ -140,38 +189,105 @@ function AssetCard({
         </div>
       </div>
 
-      <div className="mt-4 grid grid-cols-2 gap-2">
-        <div>
-          <Label className="text-xs">الكمية</Label>
-          <Input
-            type="number"
-            step="0.0001"
-            value={form.quantity || ""}
-            onChange={(e) =>
-              setForm((f) => ({ ...f, quantity: Number(e.target.value) }))
-            }
-            className="h-9"
-          />
+      {isGold ? (
+        <div className="mt-4 space-y-2">
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <Label className="text-xs">العيار (قيراط)</Label>
+              <select
+                value={form.goldKarat}
+                onChange={(e) =>
+                  setForm((f) => ({
+                    ...f,
+                    goldKarat: Number(e.target.value),
+                  }))
+                }
+                className="flex h-9 w-full rounded-md border border-slate-200 bg-white px-2 text-sm"
+              >
+                {GOLD_KARAT_OPTIONS.map((k) => (
+                  <option key={k} value={k}>
+                    {k}K
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <Label className="text-xs">الوزن (غرام)</Label>
+              <Input
+                type="number"
+                step="0.01"
+                min={0}
+                value={form.quantity || ""}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, quantity: Number(e.target.value) }))
+                }
+                className="h-9"
+              />
+            </div>
+          </div>
+          <div>
+            <Label className="text-xs">سعر الغرام (₪) — تلقائي</Label>
+            <Input
+              type="number"
+              step="0.01"
+              value={form.unitPrice || ""}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, unitPrice: Number(e.target.value) }))
+              }
+              className="h-9"
+            />
+          </div>
         </div>
-        <div>
-          <Label className="text-xs">
-            {isGold ? "سعر الوحدة (₪)" : "سعر الصرف (₪/$)"}
-          </Label>
-          <Input
-            type="number"
-            step="0.01"
-            value={form.unitPrice || ""}
-            onChange={(e) =>
-              setForm((f) => ({ ...f, unitPrice: Number(e.target.value) }))
-            }
-            className="h-9"
-          />
+      ) : (
+        <div className="mt-4 grid grid-cols-2 gap-2">
+          <div>
+            <Label className="text-xs">المبلغ ($)</Label>
+            <Input
+              type="number"
+              step="0.01"
+              min={0}
+              value={form.quantity || ""}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, quantity: Number(e.target.value) }))
+              }
+              className="h-9"
+            />
+          </div>
+          <div>
+            <Label className="text-xs">سعر الصرف (₪/$)</Label>
+            <Input
+              type="number"
+              step="0.0001"
+              value={form.unitPrice || ""}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, unitPrice: Number(e.target.value) }))
+              }
+              className="h-9"
+            />
+          </div>
         </div>
-      </div>
+      )}
+
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        className="mt-3 w-full"
+        disabled={fetchingRate}
+        onClick={fetchLiveRate}
+      >
+        <RefreshCw
+          className={`me-2 h-3.5 w-3.5 ${fetchingRate ? "animate-spin" : ""}`}
+        />
+        {fetchingRate ? "جاري التحديث…" : "تحديث السعر من الإنترنت"}
+      </Button>
+      {rateMeta && (
+        <p className="mt-2 text-[10px] leading-relaxed text-slate-500">{rateMeta}</p>
+      )}
+
       <Button
         size="sm"
-        className="mt-3 w-full"
-        variant={isGold ? "default" : "default"}
+        className="mt-2 w-full"
         disabled={isPending}
         onClick={save}
       >

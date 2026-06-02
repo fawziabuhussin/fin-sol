@@ -20,7 +20,10 @@ export type YearlyTrendPoint = {
   income: number;
   expenses: number;
   net: number;
+  savings?: number;
+  netAfterSavings?: number;
   salary: number;
+  expensesAdjusted?: boolean;
 };
 
 function formatAxisTick(value: number) {
@@ -44,7 +47,8 @@ function ChartTooltip({
   const expenses = Number(
     payload.find((p) => p.dataKey === "expenses")?.value ?? 0
   );
-  const net = income - expenses;
+  const savings = Number(payload.find((p) => p.dataKey === "savings")?.value ?? 0);
+  const net = income - expenses - savings;
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white/95 px-4 py-3 shadow-lg backdrop-blur-sm">
@@ -64,6 +68,15 @@ function ChartTooltip({
           </span>
           <span className="font-bold text-rose-700">{formatCurrency(expenses)}</span>
         </div>
+        {savings > 0 && (
+          <div className="flex items-center justify-between gap-6">
+            <span className="flex items-center gap-2 text-slate-600">
+              <span className="h-2.5 w-2.5 rounded-sm bg-violet-500" />
+              الادخار
+            </span>
+            <span className="font-bold text-violet-700">{formatCurrency(savings)}</span>
+          </div>
+        )}
         <div className="mt-2 border-t border-slate-100 pt-2 flex items-center justify-between gap-6">
           <span className="flex items-center gap-2 text-slate-600">
             <span className="h-0.5 w-3 rounded bg-indigo-500" />
@@ -92,12 +105,15 @@ export function YearlyTrendChart({
     (acc, m) => ({
       income: acc.income + m.income,
       expenses: acc.expenses + m.expenses,
+      savings: acc.savings + (m.savings ?? 0),
       net: acc.net + m.net,
     }),
-    { income: 0, expenses: 0, net: 0 }
+    { income: 0, expenses: 0, savings: 0, net: 0 }
   );
 
-  const activeMonths = data.filter((m) => m.income > 0 || m.expenses > 0).length;
+  const activeMonths = data.filter(
+    (m) => m.income > 0 || m.expenses > 0 || (m.savings ?? 0) > 0
+  ).length;
 
   return (
     <div className="space-y-4">
@@ -105,6 +121,7 @@ export function YearlyTrendChart({
         {[
           { label: "دخل السنة", value: totals.income, color: "text-emerald-700", bg: "bg-emerald-50" },
           { label: "مصروفات السنة", value: totals.expenses, color: "text-rose-700", bg: "bg-rose-50" },
+          { label: "ادخار السنة", value: totals.savings, color: "text-violet-700", bg: "bg-violet-50" },
           { label: "صافي السنة", value: totals.net, color: totals.net >= 0 ? "text-indigo-700" : "text-amber-700", bg: totals.net >= 0 ? "bg-indigo-50" : "bg-amber-50" },
         ].map((kpi) => (
           <div
@@ -178,6 +195,13 @@ export function YearlyTrendChart({
               radius={[6, 6, 0, 0]}
               maxBarSize={22}
             />
+            <Bar
+              dataKey="savings"
+              name="الادخار"
+              fill="#8b5cf6"
+              radius={[6, 6, 0, 0]}
+              maxBarSize={18}
+            />
             <Line
               type="monotone"
               dataKey="net"
@@ -197,7 +221,8 @@ export function YearlyTrendChart({
       </div>
 
       <p className="text-center text-xs text-slate-500">
-        {year} · {activeMonths} أشهر بحركة مالية · الأعمدة: دخل ومصروف · الخط: الصافي الشهري
+        {year} · حتى {data[data.length - 1]?.label ?? "—"} · {activeMonths} أشهر ·
+        الأعمدة: دخل، مصروف، ادخار · الخط: الصافي بعد تعديل الأشهر الأولى
       </p>
     </div>
   );

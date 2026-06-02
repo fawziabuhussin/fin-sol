@@ -48,6 +48,7 @@ export async function POST(req: Request) {
         paidAt: data.paid ? new Date() : null,
         notes: data.notes || null,
         slipFileUrl: data.slipFileUrl || null,
+        slipBreakdown: data.slipBreakdown ?? undefined,
       },
       update: {
         ...(data.worked !== undefined ? { worked: data.worked } : {}),
@@ -63,6 +64,9 @@ export async function POST(req: Request) {
         bonus: data.bonus ?? 0,
         notes: data.notes || null,
         slipFileUrl: data.slipFileUrl || null,
+        ...(data.slipBreakdown !== undefined
+          ? { slipBreakdown: data.slipBreakdown }
+          : {}),
       },
     });
 

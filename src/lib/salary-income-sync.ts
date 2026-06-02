@@ -4,7 +4,7 @@ import {
   TransactionType,
 } from "@/generated/prisma/client";
 import { prisma as defaultPrisma } from "@/lib/db";
-import { incomeDateFromSalaryPeriod } from "@/lib/dates";
+import { incomeDateFromSalaryPeriod, monthRangeUTC } from "@/lib/dates";
 import { decimalToNumber } from "@/lib/utils";
 
 export function slipEffectiveNet(slip: {
@@ -37,6 +37,40 @@ async function ensurePayee(userId: string, name: string, db: PrismaClient) {
     payee = await db.payee.create({ data: { userId, name } });
   }
   return payee;
+}
+
+/** Remove legacy Excel income rows when a salary slip already owns that month. */
+export async function removeOrphanIncomeForSlip(
+  slip: {
+    userId: string;
+    periodYear: number;
+    periodMonth: number;
+    employer: { name: string };
+  },
+  db: PrismaClient = defaultPrisma,
+  keepTransactionId?: string
+) {
+  const { start, end } = monthRangeUTC(slip.periodYear, slip.periodMonth);
+  const employerName = slip.employer.name;
+
+  const orphans = await db.transaction.findMany({
+    where: {
+      userId: slip.userId,
+      type: TransactionType.INCOME,
+      salarySlipId: null,
+      occurredAt: { gte: start, lte: end },
+      OR: [{ description: employerName }, { payee: { name: employerName } }],
+      ...(keepTransactionId ? { id: { not: keepTransactionId } } : {}),
+    },
+    select: { id: true },
+  });
+
+  if (orphans.length === 0) return 0;
+
+  await db.transaction.deleteMany({
+    where: { id: { in: orphans.map((o) => o.id) } },
+  });
+  return orphans.length;
 }
 
 /** Create/update/delete the income transaction linked to a salary slip. */
@@ -85,6 +119,7 @@ export async function syncSalarySlipIncome(
   };
 
   if (existing) {
+    await removeOrphanIncomeForSlip(slip, db, existing.id);
     return db.transaction.update({
       where: { id: existing.id },
       data: {
@@ -97,6 +132,7 @@ export async function syncSalarySlipIncome(
     });
   }
 
+  await removeOrphanIncomeForSlip(slip, db);
   return db.transaction.create({ data });
 }
 
@@ -118,22 +154,7 @@ export async function syncAllSalaryIncomeForUser(
   });
 
   for (const slip of slips) {
-    const nextMonth =
-      slip.periodMonth === 12
-        ? { year: slip.periodYear + 1, month: 1 }
-        : { year: slip.periodYear, month: slip.periodMonth + 1 };
-    const shiftedDate = new Date(
-      Date.UTC(nextMonth.year, nextMonth.month - 1, 1)
-    );
-    await db.transaction.deleteMany({
-      where: {
-        userId,
-        type: TransactionType.INCOME,
-        salarySlipId: null,
-        description: slip.employer.name,
-        occurredAt: shiftedDate,
-      },
-    });
+    await removeOrphanIncomeForSlip(slip, db);
     await syncSalarySlipIncome(slip.id, db);
   }
 }

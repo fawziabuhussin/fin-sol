@@ -260,6 +260,7 @@ model SavingsAsset {
   title         String
   quantity      Decimal          @db.Decimal(14, 4)
   unitPrice     Decimal          @db.Decimal(14, 4)
+  goldKarat     Int?
   priceCurrency String           @default("ILS")
   valueIls      Decimal          @db.Decimal(14, 2)
   notes         String?
@@ -309,6 +310,8 @@ model SalarySlip {
   paid            Boolean  @default(false)
   paidAt          DateTime? @db.Date
   slipFileUrl     String?
+  /** Pension (גמל), taxes (מסים), keren — parsed from תלוש PDF */
+  slipBreakdown   Json?
   notes           String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt

@@ -32,6 +32,7 @@ export const savingsAssetSchema = z.object({
   title: z.string().min(1).max(120),
   quantity: z.coerce.number().min(0),
   unitPrice: z.coerce.number().min(0),
+  goldKarat: z.coerce.number().int().min(14).max(24).optional(),
   priceCurrency: z.enum(["ILS", "USD"]).default("ILS"),
   notes: z.string().max(300).optional().or(z.literal("")),
 });

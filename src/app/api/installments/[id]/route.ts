@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/session";
 import { handleApiError } from "@/lib/api-error";
+import {
+  installmentTransactionDescription,
+  syncLinkedInstallmentTransaction,
+} from "@/lib/installment-transactions";
 import { ensureBuildCategoryId } from "@/lib/build-category";
 import { installmentEditSchema } from "@/lib/validations/payment-plan";
 import { InstallmentStatus, TransactionType } from "@/generated/prisma/client";
@@ -29,7 +33,6 @@ export async function PATCH(
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 
-    // Field edits (amount / dueDate / label / notes)
     const data: Prisma.ProjectInstallmentUpdateInput = {};
     if (body.amount !== undefined) data.amount = body.amount;
     if (body.dueDate !== undefined) data.dueDate = new Date(body.dueDate);
@@ -37,16 +40,21 @@ export async function PATCH(
     if (body.notes !== undefined) data.notes = body.notes || null;
 
     const newAmount = body.amount ?? Number(installment.amount);
+    const newDueDate = body.dueDate ? new Date(body.dueDate) : installment.dueDate;
+    const newLabel = body.label ?? installment.label;
     const wasPaid = installment.status === InstallmentStatus.PAID;
 
-    // Paid state transitions
     if (body.paid === true && !wasPaid) {
       const categoryId = await ensureBuildCategoryId(user.id);
       const occurredAt = body.occurredAt
         ? new Date(body.occurredAt)
-        : (body.dueDate ? new Date(body.dueDate) : installment.dueDate);
-      const payee = installment.plan.payeeName;
-      const label = body.label ?? installment.label ?? `قسط ${installment.sequence}`;
+        : newDueDate;
+      const label = newLabel ?? `قسط ${installment.sequence}`;
+      const description = installmentTransactionDescription(
+        label,
+        installment.plan.payeeName,
+        installment.plan.project.title
+      );
 
       const tx = await prisma.transaction.create({
         data: {
@@ -57,7 +65,8 @@ export async function PATCH(
           type: TransactionType.EXPENSE,
           amount: newAmount,
           occurredAt,
-          description: `${label} — ${payee ?? installment.plan.project.title}`,
+          description,
+          notes: body.notes ?? null,
         },
       });
       data.status = InstallmentStatus.PAID;
@@ -70,11 +79,13 @@ export async function PATCH(
       }
       data.status = InstallmentStatus.PENDING;
       data.transaction = { disconnect: true };
-    } else if (wasPaid && installment.transactionId && body.amount !== undefined) {
-      // Keep the linked building-outcome transaction in sync with edited amount
-      await prisma.transaction.update({
-        where: { id: installment.transactionId },
-        data: { amount: newAmount },
+    } else if (wasPaid && installment.transactionId) {
+      await syncLinkedInstallmentTransaction(installment, {
+        amount: body.amount,
+        dueDate: body.dueDate ? newDueDate : undefined,
+        label: body.label,
+        notes: body.notes,
+        occurredAt: body.occurredAt ? new Date(body.occurredAt) : undefined,
       });
     }
 

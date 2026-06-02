@@ -11,11 +11,14 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
+  FileUp,
   Pencil,
   Save,
   Trash2,
   X,
 } from "lucide-react";
+import { SlipBreakdownCard } from "@/components/salary/slip-breakdown-card";
+import type { SalarySlipBreakdown } from "@/lib/payslip-types";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -42,6 +45,7 @@ type MonthRow = {
   bonus: number;
   effectiveNet: number;
   notes: string | null;
+  slipBreakdown: SalarySlipBreakdown | null;
 };
 
 type EmployerDetail = {
@@ -69,18 +73,21 @@ type EmployerDetail = {
 const FIELD_LABELS: Record<string, string> = {
   gross: "إجمالي (ברוטו)",
   net: "صافي (נטו)",
-  tax: "ضريبة",
-  pension: "تقاعد",
-  kerenHishtalmut: "كيرن",
+  tax: "מסים (סה״כ)",
+  pension: "פנסיה — עובד",
+  kerenHishtalmut: "קרן השתלמות — עובד",
   fees: "خصومات/رسوم",
-  bonus: "إضافات/مكافآت",
+  bonus: "إضافات/מكافآت",
 };
 
 export function EmployerDetailClient({ detail }: { detail: EmployerDetail }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [editingMonth, setEditingMonth] = useState<number | null>(null);
-  const [editForm, setEditForm] = useState<Partial<MonthRow>>({});
+  const [editForm, setEditForm] = useState<
+    Partial<MonthRow> & { slipBreakdown?: SalarySlipBreakdown | null }
+  >({});
+  const [parseLoading, setParseLoading] = useState(false);
   const [editBase, setEditBase] = useState(false);
   const [baseForm, setBaseForm] = useState({
     baseGross: detail.base.gross,
@@ -108,6 +115,7 @@ export function EmployerDetailClient({ detail }: { detail: EmployerDetail }) {
           kerenHishtalmut: values.kerenHishtalmut ?? 0,
           fees: values.fees ?? 0,
           bonus: values.bonus ?? 0,
+          slipBreakdown: values.slipBreakdown ?? undefined,
         }),
       });
       if (!res.ok) {
@@ -180,8 +188,41 @@ export function EmployerDetailClient({ detail }: { detail: EmployerDetail }) {
             kerenHishtalmut: detail.base.keren,
             fees: 0,
             bonus: 0,
+            slipBreakdown: null,
           }
     );
+  };
+
+  const uploadPayslip = async (month: number, file: File) => {
+    setParseLoading(true);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const res = await fetch("/api/salary/parse", { method: "POST", body: form });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error ?? "فشل قراءة التלוש");
+        return;
+      }
+      setEditForm((f) => ({
+        ...f,
+        gross: data.gross ?? f.gross,
+        net: data.net ?? f.net,
+        tax: data.tax ?? f.tax,
+        pension: data.pension ?? f.pension,
+        kerenHishtalmut: data.kerenHishtalmut ?? f.kerenHishtalmut,
+        slipBreakdown: data.breakdown ?? null,
+      }));
+      toast.success(
+        data.confidence === "high"
+          ? "تم استخراج التלוש بنجاح"
+          : "تم الاستخراج — راجع الأرقام قبل الحفظ"
+      );
+    } catch {
+      toast.error("فشل رفع الملف");
+    } finally {
+      setParseLoading(false);
+    }
   };
 
   const saveBase = () => {
@@ -455,6 +496,26 @@ export function EmployerDetailClient({ detail }: { detail: EmployerDetail }) {
 
                 {isEditing && (
                   <div className="mt-3 space-y-3 border-t border-slate-100 pt-3">
+                    <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-indigo-200 bg-indigo-50/50 px-4 py-3 text-sm font-medium text-indigo-800 transition hover:bg-indigo-50">
+                      <FileUp className="h-4 w-4" />
+                      {parseLoading ? "جاري قراءة PDF…" : "رفع תלוש (PDF) — מסים ופנסיה"}
+                      <input
+                        type="file"
+                        accept="application/pdf,.pdf"
+                        className="sr-only"
+                        disabled={parseLoading || isPending}
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) uploadPayslip(row.month, file);
+                          e.target.value = "";
+                        }}
+                      />
+                    </label>
+
+                    {editForm.slipBreakdown && (
+                      <SlipBreakdownCard breakdown={editForm.slipBreakdown} />
+                    )}
+
                     <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                       {(
                         ["gross", "net", "tax", "pension", "kerenHishtalmut", "fees", "bonus"] as const
@@ -484,6 +545,12 @@ export function EmployerDetailClient({ detail }: { detail: EmployerDetail }) {
                         <Save className="h-4 w-4" /> حفظ الشهر
                       </Button>
                     </div>
+                  </div>
+                )}
+
+                {!isEditing && row.slipBreakdown && (
+                  <div className="mt-3">
+                    <SlipBreakdownCard breakdown={row.slipBreakdown} compact />
                   </div>
                 )}
               </div>
