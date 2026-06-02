@@ -4,6 +4,7 @@ import { requireUser } from "@/lib/session";
 import { handleApiError } from "@/lib/api-error";
 import { paymentPlanSchema } from "@/lib/validations/payment-plan";
 import { buildInstallmentSchedule } from "@/lib/payment-plan";
+import { syncProjectStatusAfterFinancialChange } from "@/lib/project-completion";
 import { PaymentPlanMode } from "@/generated/prisma/client";
 
 export async function POST(
@@ -45,6 +46,11 @@ export async function POST(
       startDate,
     });
 
+    await prisma.project.update({
+      where: { id: projectId },
+      data: { totalBudget: data.totalAmount },
+    });
+
     const plan = await prisma.projectPaymentPlan.create({
       data: {
         userId: user.id,
@@ -68,6 +74,10 @@ export async function POST(
         },
       },
       include: { installments: true },
+    });
+
+    await syncProjectStatusAfterFinancialChange(projectId, prisma, {
+      totalBudget: data.totalAmount,
     });
 
     return NextResponse.json(plan, { status: 201 });

@@ -7,6 +7,7 @@ import {
   amountsBySequence,
   dueDateForSequence,
 } from "@/lib/payment-plan";
+import { syncProjectStatusAfterFinancialChange } from "@/lib/project-completion";
 import { InstallmentStatus, PaymentPlanMode } from "@/generated/prisma/client";
 
 export async function PATCH(
@@ -102,8 +103,19 @@ export async function PATCH(
         }
       }
 
+      await tx.project.update({
+        where: { id: plan.projectId },
+        data: { totalBudget: totalAmount },
+      });
+
       return updatedPlan;
     });
+
+    if (d.totalAmount !== undefined) {
+      await syncProjectStatusAfterFinancialChange(plan.projectId, prisma, {
+        totalBudget: totalAmount,
+      });
+    }
 
     return NextResponse.json(updated);
   } catch (error) {

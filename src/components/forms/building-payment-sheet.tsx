@@ -231,7 +231,8 @@ export function BuildingPaymentSheet({
           {isEdit && (
             <p className="text-xs text-amber-700">
               تغيير نقطة البداية يعيد جدولة تواريخ الدفعات المعلّقة فقط. الدفعات
-              المدفوعة تبقى كما هي.
+              المدفوعة تبقى كما هي. زيادة المبلغ الإجمالي يعيد المشروع تلقائياً
+              إلى «قيد التنفيذ» إذا كان مكتملاً.
             </p>
           )}
           <Button className="w-full" disabled={isPending} onClick={submit}>

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/session";
 import { handleApiError } from "@/lib/api-error";
+import { syncProjectStatusAfterFinancialChange } from "@/lib/project-completion";
 import { projectPatchSchema } from "@/lib/validations/projects";
 
 export async function PATCH(
@@ -37,7 +38,14 @@ export async function PATCH(
       },
     });
 
-    return NextResponse.json(updated);
+    if (data.totalBudget !== undefined) {
+      await syncProjectStatusAfterFinancialChange(id, prisma, {
+        totalBudget: data.totalBudget ?? undefined,
+      });
+    }
+
+    const fresh = await prisma.project.findUnique({ where: { id } });
+    return NextResponse.json(fresh ?? updated);
   } catch (error) {
     return handleApiError(error);
   }

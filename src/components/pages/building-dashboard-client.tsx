@@ -16,7 +16,15 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { Building2, Calendar, Clock, Hammer, Play } from "lucide-react";
+import {
+  Building2,
+  Calendar,
+  CheckCircle2,
+  Clock,
+  Hammer,
+  Play,
+  RotateCcw,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -24,7 +32,11 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { formatCurrency, cn } from "@/lib/utils";
 import { projectStatusLabel } from "@/lib/finance-labels";
-import { BuildingPaymentSheet } from "@/components/forms/building-payment-sheet";
+import {
+  BuildingPaymentSheet,
+  type ExistingPaymentPlan,
+} from "@/components/forms/building-payment-sheet";
+import { isContractorFullyPaid } from "@/lib/project-completion-utils";
 
 type Contractor = {
   id: string;
@@ -36,6 +48,7 @@ type Contractor = {
   paid: number;
   remaining: number;
   pendingCount: number;
+  paymentPlan: ExistingPaymentPlan | null;
 };
 
 type Summary = {
@@ -74,7 +87,17 @@ function ContractorCard({
   isPending: boolean;
 }) {
   const isPlanned = c.status === "PLANNED";
-  const pct = c.totalBudget > 0 ? Math.round((c.paid / c.totalBudget) * 100) : 0;
+  const isCompleted = c.status === "COMPLETED";
+  const pct =
+    c.totalBudget > 0
+      ? Math.min(100, Math.round((c.paid / c.totalBudget) * 100))
+      : 0;
+  const canMarkComplete =
+    !isPlanned &&
+    !isCompleted &&
+    c.status === "ACTIVE" &&
+    isContractorFullyPaid(c.paid, c.totalBudget) &&
+    c.pendingCount === 0;
 
   return (
     <div
@@ -82,7 +105,9 @@ function ContractorCard({
         "rounded-2xl border p-4 shadow-sm transition",
         isPlanned
           ? "border-dashed border-indigo-200 bg-indigo-50/30"
-          : "border-slate-100 bg-white"
+          : isCompleted
+            ? "border-emerald-100 bg-emerald-50/30"
+            : "border-slate-100 bg-white"
       )}
     >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -94,7 +119,17 @@ function ContractorCard({
             >
               {c.title}
             </Link>
-            <Badge variant={isPlanned ? "warning" : c.status === "ACTIVE" ? "success" : "default"}>
+            <Badge
+              variant={
+                isPlanned
+                  ? "warning"
+                  : isCompleted
+                    ? "default"
+                    : c.status === "ACTIVE"
+                      ? "success"
+                      : "default"
+              }
+            >
               {projectStatusLabel(c.status)}
             </Badge>
           </div>
@@ -128,8 +163,16 @@ function ContractorCard({
               projectId={c.id}
               projectTitle={c.title}
               paymentMethods={paymentMethods}
-              defaultTotal={c.remaining}
-              triggerLabel="خطة دفع"
+              defaultTotal={c.remaining > 0 ? c.remaining : c.totalBudget}
+              defaultPayee={c.title}
+              existingPlan={c.paymentPlan}
+              triggerLabel={
+                c.paymentPlan
+                  ? isCompleted
+                    ? "زيادة الميزانية"
+                    : "تعديل خطة الدفع"
+                  : "خطة دفع"
+              }
             />
           )}
           {isPlanned ? (
@@ -140,15 +183,35 @@ function ContractorCard({
             >
               <Play className="h-4 w-4" /> بدء التنفيذ
             </Button>
-          ) : (
+          ) : isCompleted ? (
             <Button
               size="sm"
               variant="outline"
               disabled={isPending}
-              onClick={() => onStatusChange(c.id, "PLANNED")}
+              onClick={() => onStatusChange(c.id, "ACTIVE")}
             >
-              <Clock className="h-4 w-4" /> للمستقبل
+              <RotateCcw className="h-4 w-4" /> إعادة فتح
             </Button>
+          ) : (
+            <>
+              {canMarkComplete && (
+                <Button
+                  size="sm"
+                  disabled={isPending}
+                  onClick={() => onStatusChange(c.id, "COMPLETED")}
+                >
+                  <CheckCircle2 className="h-4 w-4" /> تم الإنجاز
+                </Button>
+              )}
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={isPending}
+                onClick={() => onStatusChange(c.id, "PLANNED")}
+              >
+                <Clock className="h-4 w-4" /> للمستقبل
+              </Button>
+            </>
           )}
         </div>
       </div>
@@ -167,11 +230,24 @@ export function BuildingDashboardClient({
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
-  const { activeContractors, plannedContractors } = useMemo(() => {
-    const planned = summary.contractors.filter((c) => c.status === "PLANNED");
-    const active = summary.contractors.filter((c) => c.status !== "PLANNED");
-    return { activeContractors: active, plannedContractors: planned };
-  }, [summary.contractors]);
+  const { activeContractors, completedContractors, plannedContractors } =
+    useMemo(() => {
+      const planned = summary.contractors.filter((c) => c.status === "PLANNED");
+      const completed = summary.contractors.filter(
+        (c) => c.status === "COMPLETED"
+      );
+      const active = summary.contractors.filter(
+        (c) =>
+          c.status !== "PLANNED" &&
+          c.status !== "COMPLETED" &&
+          c.status !== "CANCELLED"
+      );
+      return {
+        activeContractors: active,
+        completedContractors: completed,
+        plannedContractors: planned,
+      };
+    }, [summary.contractors]);
 
   const setStatus = (id: string, status: string) => {
     startTransition(async () => {
@@ -184,9 +260,12 @@ export function BuildingDashboardClient({
         toast.error("فشل تحديث الحالة");
         return;
       }
-      toast.success(
-        status === "PLANNED" ? "تم نقله للمستقبل" : "تم بدء التنفيذ"
-      );
+      const messages: Record<string, string> = {
+        PLANNED: "تم نقله للمستقبل",
+        ACTIVE: "تم إعادة فتح المشروع",
+        COMPLETED: "تم نقله إلى المكتملة",
+      };
+      toast.success(messages[status] ?? "تم تحديث الحالة");
       router.refresh();
     });
   };
@@ -338,6 +417,32 @@ export function BuildingDashboardClient({
           </CardHeader>
           <CardContent className="space-y-3">
             {activeContractors.map((c) => (
+              <ContractorCard
+                key={c.id}
+                c={c}
+                paymentMethods={paymentMethods}
+                onStatusChange={setStatus}
+                isPending={isPending}
+              />
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {completedContractors.length > 0 && (
+        <Card className="border-emerald-100 bg-emerald-50/20">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-emerald-900">
+              <CheckCircle2 className="h-5 w-5" />
+              مكتملة ({completedContractors.length})
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-sm text-emerald-800/80">
+              لإضافة ميزانية جديدة وإرجاع المقاول لقيد التنفيذ، استخدم «زيادة
+              الميزانية» أو «إعادة فتح».
+            </p>
+            {completedContractors.map((c) => (
               <ContractorCard
                 key={c.id}
                 c={c}

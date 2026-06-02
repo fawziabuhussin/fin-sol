@@ -15,6 +15,7 @@ import {
   repairPaidInstallmentTransactions,
   sumPaidInstallments,
 } from "@/lib/installment-transactions";
+import { contractorBudgetTotal } from "@/lib/project-completion-utils";
 import { dedupePlanBuildingExpensesForUser } from "@/lib/plan-expense-dedupe";
 import {
   CategoryKind,
@@ -683,28 +684,60 @@ export async function getBuildingProjectSummary(
     totalBudget > 0 ? Math.round((paidToDate / totalBudget) * 100) : 0;
 
   const contractors = master.children.map((child) => {
-    const childPaid = child.transactions.reduce(
-      (sum, t) => sum + decimalToNumber(t.amount),
-      0
-    );
     const activePlan = child.paymentPlans[0];
+    const planTotal = activePlan
+      ? decimalToNumber(activePlan.totalAmount)
+      : 0;
+    const totalBudget = contractorBudgetTotal(
+      decimalToNumber(child.totalBudget),
+      planTotal
+    );
+    const childPaid =
+      activePlan && activePlan.installments.length > 0
+        ? sumPaidInstallments(activePlan.installments)
+        : child.transactions.reduce(
+            (sum, t) => sum + decimalToNumber(t.amount),
+            0
+          );
     const pendingInstallments =
       activePlan?.installments.filter((i) => i.status === "PENDING") ?? [];
+    const remaining = Math.max(0, totalBudget - childPaid);
     return {
       id: child.id,
       title: child.title,
       profession: child.profession,
       status: child.status,
       targetDate: child.targetDate?.toISOString().slice(0, 10) ?? null,
-      totalBudget: decimalToNumber(child.totalBudget),
+      totalBudget,
       paid: childPaid,
-      remaining: Math.max(0, decimalToNumber(child.totalBudget) - childPaid),
+      remaining,
       pendingCount: pendingInstallments.length,
+      paymentPlan: activePlan
+        ? {
+            id: activePlan.id,
+            mode: activePlan.mode,
+            totalAmount: planTotal,
+            installmentCount: activePlan.installmentCount,
+            firstPaymentAmount: activePlan.firstPaymentAmount
+              ? decimalToNumber(activePlan.firstPaymentAmount)
+              : null,
+            recurringAmount: activePlan.recurringAmount
+              ? decimalToNumber(activePlan.recurringAmount)
+              : null,
+            payeeName: activePlan.payeeName,
+            startDate:
+              activePlan.startDate?.toISOString().slice(0, 10) ?? null,
+            paymentMethodId: activePlan.paymentMethodId,
+          }
+        : null,
     };
   });
 
   const upcomingInstallments = master.children
-    .filter((child) => child.status !== "PLANNED" && child.status !== "CANCELLED")
+    .filter(
+      (child) =>
+        child.status === "ACTIVE" || child.status === "ON_HOLD"
+    )
     .flatMap((child) => {
       const plan = child.paymentPlans[0];
       if (!plan) return [];
