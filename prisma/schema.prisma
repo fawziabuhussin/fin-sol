@@ -283,6 +283,10 @@ model Employer {
   baseTax     Decimal @default(0) @db.Decimal(14, 2)
   basePension Decimal @default(0) @db.Decimal(14, 2)
   baseKeren   Decimal @default(0) @db.Decimal(14, 2)
+  baseFees    Decimal @default(0) @db.Decimal(14, 2)
+  baseBonus   Decimal @default(0) @db.Decimal(14, 2)
+  /** Default מסים/פנסיה breakdown for new months */
+  baseSlipBreakdown Json?
   startDate   DateTime? @db.Date
   active      Boolean @default(true)
 

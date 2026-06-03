@@ -66,6 +66,9 @@ export const employerSchema = z.object({
   baseTax: z.coerce.number().min(0).optional(),
   basePension: z.coerce.number().min(0).optional(),
   baseKeren: z.coerce.number().min(0).optional(),
+  baseFees: z.coerce.number().min(0).optional(),
+  baseBonus: z.coerce.number().min(0).optional(),
+  baseSlipBreakdown: slipBreakdownSchema,
 });
 
 export type EmployerInput = z.infer<typeof employerSchema>;

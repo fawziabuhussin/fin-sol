@@ -1008,6 +1008,9 @@ export async function getEmployerDetail(
     tax: decimalToNumber(employer.baseTax),
     pension: decimalToNumber(employer.basePension),
     keren: decimalToNumber(employer.baseKeren),
+    fees: decimalToNumber(employer.baseFees),
+    bonus: decimalToNumber(employer.baseBonus),
+    slipBreakdown: (employer.baseSlipBreakdown as SalarySlipBreakdown | null) ?? null,
   };
 
   const slipByMonth = new Map(employer.salarySlips.map((s) => [s.periodMonth, s]));

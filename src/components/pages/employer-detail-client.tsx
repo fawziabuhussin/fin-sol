@@ -25,6 +25,11 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import {
+  breakdownFromBaseForm,
+  monthDefaultsFromBase,
+  partsFromBreakdown,
+} from "@/lib/salary-defaults";
 import { formatCurrency } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 
@@ -54,7 +59,16 @@ type EmployerDetail = {
   role: string | null;
   color: string | null;
   startDate: string | null;
-  base: { gross: number; net: number; tax: number; pension: number; keren: number };
+  base: {
+    gross: number;
+    net: number;
+    tax: number;
+    pension: number;
+    keren: number;
+    fees: number;
+    bonus: number;
+    slipBreakdown: SalarySlipBreakdown | null;
+  };
   year: number;
   months: MonthRow[];
   totals: {
@@ -80,6 +94,62 @@ const FIELD_LABELS: Record<string, string> = {
   bonus: "إضافات/מكافآت",
 };
 
+const BASE_FIELD_KEYS = [
+  "baseGross",
+  "baseNet",
+  "baseTax",
+  "basePension",
+  "baseKeren",
+  "baseFees",
+  "baseBonus",
+] as const;
+
+const BASE_FIELD_LABELS: Record<(typeof BASE_FIELD_KEYS)[number], string> = {
+  baseGross: FIELD_LABELS.gross,
+  baseNet: FIELD_LABELS.net,
+  baseTax: FIELD_LABELS.tax,
+  basePension: FIELD_LABELS.pension,
+  baseKeren: FIELD_LABELS.kerenHishtalmut,
+  baseFees: FIELD_LABELS.fees,
+  baseBonus: FIELD_LABELS.bonus,
+};
+
+const TAX_PART_LABELS = {
+  taxNationalInsurance: "ביטוח לאומי",
+  taxHealthInsurance: "מס בריאות",
+  taxIncome: "מס הכנסה",
+} as const;
+
+function previewBaseBreakdown(baseForm: {
+  baseGross: number;
+  baseNet: number;
+  baseTax: number;
+  basePension: number;
+  baseKeren: number;
+  baseFees: number;
+  baseBonus: number;
+  taxNationalInsurance: number;
+  taxHealthInsurance: number;
+  taxIncome: number;
+}) {
+  return breakdownFromBaseForm(
+    {
+      gross: baseForm.baseGross,
+      net: baseForm.baseNet,
+      tax: baseForm.baseTax,
+      pension: baseForm.basePension,
+      keren: baseForm.baseKeren,
+      fees: baseForm.baseFees,
+      bonus: baseForm.baseBonus,
+    },
+    {
+      taxNationalInsurance: baseForm.taxNationalInsurance,
+      taxHealthInsurance: baseForm.taxHealthInsurance,
+      taxIncome: baseForm.taxIncome,
+    }
+  );
+}
+
 export function EmployerDetailClient({ detail }: { detail: EmployerDetail }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -89,13 +159,17 @@ export function EmployerDetailClient({ detail }: { detail: EmployerDetail }) {
   >({});
   const [parseLoading, setParseLoading] = useState(false);
   const [editBase, setEditBase] = useState(false);
+  const taxPartsInit = partsFromBreakdown(detail.base.slipBreakdown);
   const [baseForm, setBaseForm] = useState({
     baseGross: detail.base.gross,
     baseNet: detail.base.net,
     baseTax: detail.base.tax,
     basePension: detail.base.pension,
     baseKeren: detail.base.keren,
+    baseFees: detail.base.fees,
+    baseBonus: detail.base.bonus,
     role: detail.role ?? "",
+    ...taxPartsInit,
   });
 
   const saveMonth = (month: number, values: Partial<MonthRow>, worked: boolean) => {
@@ -177,20 +251,7 @@ export function EmployerDetailClient({ detail }: { detail: EmployerDetail }) {
 
   const startEdit = (row: MonthRow) => {
     setEditingMonth(row.month);
-    setEditForm(
-      row.exists
-        ? { ...row }
-        : {
-            gross: detail.base.gross,
-            net: detail.base.net,
-            tax: detail.base.tax,
-            pension: detail.base.pension,
-            kerenHishtalmut: detail.base.keren,
-            fees: 0,
-            bonus: 0,
-            slipBreakdown: null,
-          }
-    );
+    setEditForm(row.exists ? { ...row } : monthDefaultsFromBase(detail.base));
   };
 
   const uploadPayslip = async (month: number, file: File) => {
@@ -226,11 +287,23 @@ export function EmployerDetailClient({ detail }: { detail: EmployerDetail }) {
   };
 
   const saveBase = () => {
+    const breakdown = previewBaseBreakdown(baseForm);
+
     startTransition(async () => {
       const res = await fetch(`/api/employers/${detail.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(baseForm),
+        body: JSON.stringify({
+          role: baseForm.role,
+          baseGross: baseForm.baseGross,
+          baseNet: baseForm.baseNet,
+          baseTax: baseForm.baseTax,
+          basePension: baseForm.basePension,
+          baseKeren: baseForm.baseKeren,
+          baseFees: baseForm.baseFees,
+          baseBonus: baseForm.baseBonus,
+          baseSlipBreakdown: breakdown,
+        }),
       });
       if (!res.ok) {
         toast.error("فشل حفظ الإعدادات");
@@ -343,59 +416,108 @@ export function EmployerDetailClient({ detail }: { detail: EmployerDetail }) {
               </Button>
             </div>
           ) : (
-            <Button size="sm" variant="outline" onClick={() => setEditBase(true)}>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                setBaseForm({
+                  baseGross: detail.base.gross,
+                  baseNet: detail.base.net,
+                  baseTax: detail.base.tax,
+                  basePension: detail.base.pension,
+                  baseKeren: detail.base.keren,
+                  baseFees: detail.base.fees,
+                  baseBonus: detail.base.bonus,
+                  role: detail.role ?? "",
+                  ...partsFromBreakdown(detail.base.slipBreakdown),
+                });
+                setEditBase(true);
+              }}
+            >
               <Pencil className="h-4 w-4" /> تعديل
             </Button>
           )}
         </CardHeader>
         <CardContent>
           {editBase ? (
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              <div>
-                <Label>المسمّى الوظيفي</Label>
-                <Input
-                  value={baseForm.role}
-                  onChange={(e) => setBaseForm((f) => ({ ...f, role: e.target.value }))}
-                />
+            <div className="space-y-4">
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                <div className="sm:col-span-2 lg:col-span-3">
+                  <Label>المسمّى الوظيفي</Label>
+                  <Input
+                    value={baseForm.role}
+                    onChange={(e) => setBaseForm((f) => ({ ...f, role: e.target.value }))}
+                  />
+                </div>
+                {BASE_FIELD_KEYS.map((key) => (
+                  <div key={key}>
+                    <Label className="text-xs">{BASE_FIELD_LABELS[key]}</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={baseForm[key] || ""}
+                      onChange={(e) =>
+                        setBaseForm((f) => ({ ...f, [key]: Number(e.target.value) }))
+                      }
+                    />
+                  </div>
+                ))}
               </div>
+              <div className="rounded-xl border border-rose-100 bg-rose-50/40 p-3">
+                <p className="mb-2 text-xs font-bold text-rose-800">
+                  פירוט מסים (اختياري — يُنسخ لكل شهر جديد)
+                </p>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                  {(
+                    Object.keys(TAX_PART_LABELS) as (keyof typeof TAX_PART_LABELS)[]
+                  ).map((key) => (
+                    <div key={key}>
+                      <Label className="text-xs">{TAX_PART_LABELS[key]}</Label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        value={baseForm[key] || ""}
+                        onChange={(e) =>
+                          setBaseForm((f) => ({
+                            ...f,
+                            [key]: Number(e.target.value),
+                          }))
+                        }
+                      />
+                    </div>
+                  ))}
+                </div>
+                <p className="mt-2 text-[11px] text-slate-500">
+                  إن تركت الفصل فارغاً يُستخدم «מסים (סה״כ)» فقط.
+                </p>
+              </div>
+              {previewBaseBreakdown(baseForm) && (
+                <SlipBreakdownCard breakdown={previewBaseBreakdown(baseForm)!} compact />
+              )}
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3 lg:grid-cols-4">
               {(
                 [
-                  ["baseGross", "إجمالي أساسي"],
-                  ["baseNet", "صافي أساسي"],
-                  ["baseTax", "ضريبة أساسية"],
-                  ["basePension", "تقاعد أساسي"],
-                  ["baseKeren", "كيرن أساسي"],
+                  [FIELD_LABELS.gross, detail.base.gross],
+                  [FIELD_LABELS.net, detail.base.net],
+                  [FIELD_LABELS.tax, detail.base.tax],
+                  [FIELD_LABELS.pension, detail.base.pension],
+                  [FIELD_LABELS.kerenHishtalmut, detail.base.keren],
+                  [FIELD_LABELS.fees, detail.base.fees],
+                  [FIELD_LABELS.bonus, detail.base.bonus],
                 ] as const
-              ).map(([key, label]) => (
-                <div key={key}>
-                  <Label>{label}</Label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    value={baseForm[key] || ""}
-                    onChange={(e) =>
-                      setBaseForm((f) => ({ ...f, [key]: Number(e.target.value) }))
-                    }
-                  />
+              ).map(([label, value]) => (
+                <div key={label} className="rounded-xl bg-slate-50 p-3">
+                  <p className="text-xs text-slate-500">{label}</p>
+                  <p className="font-bold text-slate-900">{formatCurrency(value)}</p>
                 </div>
               ))}
             </div>
-          ) : (
-            <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3 lg:grid-cols-5">
-              {[
-                ["إجمالي", detail.base.gross],
-                ["صافي", detail.base.net],
-                ["ضريبة", detail.base.tax],
-                ["تقاعد", detail.base.pension],
-                ["كيرن", detail.base.keren],
-              ].map(([label, value]) => (
-                <div key={label as string} className="rounded-xl bg-slate-50 p-3">
-                  <p className="text-xs text-slate-500">{label}</p>
-                  <p className="font-bold text-slate-900">
-                    {formatCurrency(value as number)}
-                  </p>
-                </div>
-              ))}
+          )}
+          {!editBase && detail.base.slipBreakdown && (
+            <div className="mt-3">
+              <SlipBreakdownCard breakdown={detail.base.slipBreakdown} compact />
             </div>
           )}
           <p className="mt-3 text-xs text-slate-500">

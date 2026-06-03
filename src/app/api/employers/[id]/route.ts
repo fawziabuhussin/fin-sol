@@ -40,6 +40,11 @@ export async function PATCH(
         ...(d.baseTax !== undefined ? { baseTax: d.baseTax } : {}),
         ...(d.basePension !== undefined ? { basePension: d.basePension } : {}),
         ...(d.baseKeren !== undefined ? { baseKeren: d.baseKeren } : {}),
+        ...(d.baseFees !== undefined ? { baseFees: d.baseFees } : {}),
+        ...(d.baseBonus !== undefined ? { baseBonus: d.baseBonus } : {}),
+        ...(d.baseSlipBreakdown !== undefined
+          ? { baseSlipBreakdown: d.baseSlipBreakdown ?? null }
+          : {}),
       },
     });
 
