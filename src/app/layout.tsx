@@ -21,9 +21,12 @@ export const metadata: Metadata = {
     title: "Fin$ol",
   },
   icons: {
-    icon: [{ url: "/icon.svg", type: "image/svg+xml" }],
+    icon: [
+      { url: "/favicon.ico", sizes: "48x48" },
+      { url: "/icon.svg", type: "image/svg+xml", sizes: "any" },
+    ],
     apple: [{ url: "/apple-icon", sizes: "180x180", type: "image/png" }],
-    shortcut: [{ url: "/icon.svg", type: "image/svg+xml" }],
+    shortcut: "/favicon.ico",
   },
   other: {
     "mobile-web-app-capable": "yes",
