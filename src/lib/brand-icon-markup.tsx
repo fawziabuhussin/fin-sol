@@ -37,11 +37,13 @@ export function BrandIconSvg({ size = 120 }: { size?: number }) {
   );
 }
 
+/** App Store icons must be square with no transparent pixels (Apple applies the mask). */
 export function brandIconImageResponse(
   width: number,
   height: number,
-  radius: number
+  options?: { square?: boolean }
 ) {
+  const square = options?.square ?? true;
   const mark = Math.round(Math.min(width, height) * 0.52);
   return (
     <div
@@ -52,7 +54,7 @@ export function brandIconImageResponse(
         alignItems: "center",
         justifyContent: "center",
         background: "linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%)",
-        borderRadius: radius,
+        borderRadius: square ? 0 : Math.round(Math.min(width, height) * 0.22),
       }}
     >
       <BrandIconSvg size={mark} />

@@ -13,7 +13,7 @@ async function main() {
 
   for (const size of sizes) {
     const res = await new ImageResponse(
-      brandIconImageResponse(size, size, Math.round(size * 0.22)),
+      brandIconImageResponse(size, size, { square: false }),
       { width: size, height: size }
     );
     pngs.push(Buffer.from(await res.arrayBuffer()));
