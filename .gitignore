@@ -40,4 +40,11 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+# Capacitor iOS build artifacts (keep ios/App source in git)
+ios/App/Pods/
+ios/App/build/
+ios/DerivedData/
+*.xcuserstate
+*.xcworkspace/xcuserdata/
+
 /src/generated/prisma

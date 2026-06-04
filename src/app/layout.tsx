@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Tajawal } from "next/font/google";
+import { NativeShell } from "@/components/capacitor/native-shell";
 import "./globals.css";
 
 const tajawal = Tajawal({
@@ -51,7 +52,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ar" dir="rtl" className={`${tajawal.variable} h-full antialiased`}>
-      <body className="min-h-full overflow-x-hidden bg-[#F8FAFC] text-slate-900">{children}</body>
+      <body className="min-h-full overflow-x-hidden bg-[#F8FAFC] text-slate-900">
+        <NativeShell />
+        {children}
+      </body>
     </html>
   );
 }
