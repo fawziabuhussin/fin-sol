@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Logo, LogoMark } from "@/components/brand/logo";
+import { LogoMark } from "@/components/brand/logo";
 
 const segmentLabel: Record<string, string> = {
   dashboard: "لوحة التحكم",
