@@ -9,8 +9,25 @@ const tajawal = Tajawal({
 });
 
 export const metadata: Metadata = {
-  title: "Fin$ol — المالية الذكية",
-  description: "منصة مالية ذكية متعددة المستأجرين",
+  title: {
+    default: "Fin$ol — المالية الذكية",
+    template: "%s | Fin$ol",
+  },
+  description: "منصة مالية ذكية لإدارة الدخل والمصروفات والادخار والراتب",
+  applicationName: "Fin$ol",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "Fin$ol",
+  },
+  icons: {
+    icon: [{ url: "/icon.svg", type: "image/svg+xml" }],
+    apple: [{ url: "/apple-icon", sizes: "180x180", type: "image/png" }],
+    shortcut: [{ url: "/icon.svg", type: "image/svg+xml" }],
+  },
+  other: {
+    "mobile-web-app-capable": "yes",
+  },
 };
 
 export const viewport: Viewport = {
@@ -18,6 +35,10 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 1,
   viewportFit: "cover",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#4F46E5" },
+    { media: "(prefers-color-scheme: dark)", color: "#312E81" },
+  ],
 };
 
 export default function RootLayout({

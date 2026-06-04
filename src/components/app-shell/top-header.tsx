@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { LogoMark } from "@/components/brand/logo";
+import { Logo, LogoMark } from "@/components/brand/logo";
 
 const segmentLabel: Record<string, string> = {
   dashboard: "لوحة التحكم",
@@ -39,10 +39,10 @@ export function TopHeader({
     <header className="sticky top-0 z-50 border-b border-white/20 bg-white/70 px-3 py-3 shadow-sm backdrop-blur-xl backdrop-saturate-150 sm:px-6 sm:py-4">
       <div className="flex items-center justify-between gap-2">
         <div className="flex min-w-0 flex-1 items-center gap-2.5">
-          <Link href="/dashboard" className="lg:hidden" aria-label="الرئيسية">
+          <Link href="/dashboard" className="shrink-0 lg:hidden" aria-label="الرئيسية">
             <LogoMark className="h-9 w-9" />
           </Link>
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
           <p className="truncate text-base font-extrabold text-slate-900 sm:text-lg">
             {currentPage}
           </p>
