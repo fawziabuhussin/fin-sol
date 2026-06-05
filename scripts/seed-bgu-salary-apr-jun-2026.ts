@@ -79,14 +79,23 @@ async function main() {
   });
 
   if (!employer) {
-    const all = await prisma.employer.findMany({
-      where: { userId: user.id },
-      select: { id: true, name: true },
+    employer = await prisma.employer.create({
+      data: {
+        userId: user.id,
+        name: "جامعة شغل",
+        color: "#6366f1",
+        active: true,
+        baseGross: slip.gross,
+        baseNet: slip.net,
+        baseTax: slip.tax,
+        basePension: slip.pension,
+        baseKeren: slip.kerenHishtalmut,
+        baseFees: slip.fees,
+        baseBonus: 0,
+        baseSlipBreakdown: slip.breakdown,
+      },
     });
-    console.log("Employers:", all.map((e) => e.name).join(", ") || "(none)");
-    throw new Error(
-      `Employer not found. Expected one of: ${EMPLOYER_NAMES.join(", ")}`
-    );
+    console.log(`Created missing employer: ${employer.name} (${employer.id})`);
   }
 
   console.log(`Employer: ${employer.name} (${employer.id})`);

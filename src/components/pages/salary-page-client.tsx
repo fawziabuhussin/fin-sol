@@ -5,7 +5,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
+  AlertTriangle,
   ChevronLeft,
+  MoreVertical,
   Pause,
   Pencil,
   Play,
@@ -117,6 +119,9 @@ export function SalaryPageClient({
   const [empForm, setEmpForm] = useState({ name: "", role: "" });
   const [addingEmployer, setAddingEmployer] = useState(false);
   const [newEmployer, setNewEmployer] = useState({ name: "", role: "" });
+  const [menuEmployerId, setMenuEmployerId] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
 
   const patchEmployer = (id: string, body: Record<string, unknown>, msg: string) => {
     startTransition(async () => {
@@ -136,7 +141,10 @@ export function SalaryPageClient({
   };
 
   const deleteEmployer = (emp: Employer) => {
-    if (!confirm(`حذف "${emp.name}"؟`)) return;
+    if (deleteConfirmText.trim() !== emp.name.trim()) {
+      toast.error("اكتب اسم جهة العمل بالضبط للتأكيد");
+      return;
+    }
     startTransition(async () => {
       const res = await fetch(`/api/employers/${emp.id}`, { method: "DELETE" });
       if (!res.ok) {
@@ -144,8 +152,17 @@ export function SalaryPageClient({
         return;
       }
       toast.success("تم الحذف");
+      setConfirmDeleteId(null);
+      setDeleteConfirmText("");
+      setMenuEmployerId(null);
       router.refresh();
     });
+  };
+
+  const cancelDelete = () => {
+    setConfirmDeleteId(null);
+    setDeleteConfirmText("");
+    setMenuEmployerId(null);
   };
 
   const addEmployer = () => {
@@ -242,53 +259,143 @@ export function SalaryPageClient({
             >
               فتح الصفحة الشهرية <ChevronLeft className="h-3 w-3" />
             </Link>
-              <div className="mt-3 flex items-center gap-0.5">
-                <button
-                  type="button"
-                  title={emp.active ? "إيقاف" : "تفعيل"}
-                  onClick={() =>
-                    patchEmployer(
-                      emp.id,
-                      { active: !emp.active },
-                      emp.active ? "تم الإيقاف" : "تم التفعيل"
-                    )
-                  }
-                  className={cn(
-                    "rounded-lg p-1.5 transition-colors",
-                    selected ? "hover:bg-white/10" : "hover:bg-slate-100",
-                    emp.active ? "text-amber-500" : "text-emerald-500"
+              <div className="mt-3 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    title={emp.active ? "إيقاف" : "تفعيل"}
+                    onClick={() =>
+                      patchEmployer(
+                        emp.id,
+                        { active: !emp.active },
+                        emp.active ? "تم الإيقاف" : "تم التفعيل"
+                      )
+                    }
+                    className={cn(
+                      "rounded-lg p-1.5 transition-colors",
+                      selected ? "hover:bg-white/10" : "hover:bg-slate-100",
+                      emp.active ? "text-amber-500" : "text-emerald-500"
+                    )}
+                  >
+                    {emp.active ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+                  </button>
+                  <button
+                    type="button"
+                    title="تعديل"
+                    onClick={() => {
+                      setEditingEmployer(emp.id);
+                      setEmpForm({ name: emp.name, role: emp.role ?? "" });
+                      setMenuEmployerId(null);
+                      setConfirmDeleteId(null);
+                    }}
+                    className={cn(
+                      "rounded-lg p-1.5 transition-colors",
+                      selected ? "text-slate-200 hover:bg-white/10" : "text-slate-400 hover:bg-slate-100"
+                    )}
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </button>
+                </div>
+
+                <div className="relative">
+                  <button
+                    type="button"
+                    title="المزيد"
+                    onClick={() => {
+                      setMenuEmployerId(menuEmployerId === emp.id ? null : emp.id);
+                      setConfirmDeleteId(null);
+                      setDeleteConfirmText("");
+                    }}
+                    className={cn(
+                      "rounded-lg p-1.5 transition-colors",
+                      selected ? "text-slate-200 hover:bg-white/10" : "text-slate-400 hover:bg-slate-100"
+                    )}
+                  >
+                    <MoreVertical className="h-4 w-4" />
+                  </button>
+                  {menuEmployerId === emp.id && !confirmDeleteId && (
+                    <div
+                      className={cn(
+                        "absolute bottom-full left-0 z-10 mb-1 min-w-[10rem] rounded-xl border p-1 shadow-lg",
+                        selected
+                          ? "border-slate-700 bg-slate-800 text-white"
+                          : "border-slate-200 bg-white text-slate-900"
+                      )}
+                    >
+                      <button
+                        type="button"
+                        className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-right text-sm text-rose-600 hover:bg-rose-50"
+                        onClick={() => {
+                          setConfirmDeleteId(emp.id);
+                          setDeleteConfirmText("");
+                          setMenuEmployerId(null);
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        حذف جهة العمل
+                      </button>
+                    </div>
                   )}
-                >
-                  {emp.active ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-                </button>
-                <button
-                  type="button"
-                  title="تعديل"
-                  onClick={() => {
-                    setEditingEmployer(emp.id);
-                    setEmpForm({ name: emp.name, role: emp.role ?? "" });
-                  }}
-                  className={cn(
-                    "rounded-lg p-1.5 transition-colors",
-                    selected ? "text-slate-200 hover:bg-white/10" : "text-slate-400 hover:bg-slate-100"
-                  )}
-                >
-                  <Pencil className="h-4 w-4" />
-                </button>
-                <button
-                  type="button"
-                  title="حذف"
-                  onClick={() => deleteEmployer(emp)}
-                  className={cn(
-                    "rounded-lg p-1.5 transition-colors",
-                    selected
-                      ? "text-rose-300 hover:bg-white/10"
-                      : "text-slate-400 hover:bg-rose-50 hover:text-rose-600"
-                  )}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
+                </div>
               </div>
+
+              {confirmDeleteId === emp.id && (
+                <div
+                  className={cn(
+                    "mt-3 rounded-xl border p-3 text-right",
+                    selected
+                      ? "border-rose-400/40 bg-rose-950/40"
+                      : "border-rose-200 bg-rose-50"
+                  )}
+                >
+                  <div className="mb-2 flex items-start gap-2">
+                    <AlertTriangle
+                      className={cn(
+                        "mt-0.5 h-4 w-4 shrink-0",
+                        selected ? "text-rose-300" : "text-rose-600"
+                      )}
+                    />
+                    <div>
+                      <p
+                        className={cn(
+                          "text-sm font-bold",
+                          selected ? "text-rose-100" : "text-rose-900"
+                        )}
+                      >
+                        حذف «{emp.name}»؟
+                      </p>
+                      <p
+                        className={cn(
+                          "mt-1 text-xs leading-relaxed",
+                          selected ? "text-rose-200/90" : "text-rose-800"
+                        )}
+                      >
+                        سيتم حذف كل التلושات والدخل المرتبط. لا يمكن التراجع.
+                        اكتب اسم جهة العمل للتأكيد:
+                      </p>
+                    </div>
+                  </div>
+                  <Input
+                    value={deleteConfirmText}
+                    placeholder={emp.name}
+                    className="mb-2 text-slate-900"
+                    onChange={(e) => setDeleteConfirmText(e.target.value)}
+                  />
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      disabled={isPending || deleteConfirmText.trim() !== emp.name.trim()}
+                      onClick={() => deleteEmployer(emp)}
+                    >
+                      <Trash2 className="h-4 w-4" /> حذف نهائي
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={cancelDelete}>
+                      إلغاء
+                    </Button>
+                  </div>
+                </div>
+              )}
               </>
               )}
           </div>
