@@ -20,6 +20,8 @@
     "recategorize:isracard": "tsx scripts/recategorize-isracard.ts",
     "generate:favicons": "tsx scripts/generate-favicons.ts",
     "generate:ios-icons": "tsx scripts/generate-ios-icons.ts",
+    "app-store:copy": "bash scripts/app-store-print.sh",
+    "app-store:screenshots": "bash scripts/app-store-capture-screenshots.sh",
     "cap:sync": "npx cap sync ios",
     "cap:ios": "npx cap open ios",
     "cap:run": "npx cap run ios",

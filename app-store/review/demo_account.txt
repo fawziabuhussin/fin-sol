@@ -1,0 +1,9 @@
+Sign-in required: Yes
+
+Username: foze820@gmail.com
+Password: [USE YOUR DEMO PASSWORD — create a dedicated review account if preferred]
+
+Notes for reviewer:
+Fin$ol is an Arabic (RTL) personal finance app. After login you will see the monthly dashboard, transactions, savings plans, salary slips (with PDF upload), and building projects. The app loads from our secure HTTPS backend. Test account has sample transactions and salary data. No in-app purchases. No ads.
+
+Contact: foze820@gmail.com

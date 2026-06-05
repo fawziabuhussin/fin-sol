@@ -1,0 +1,7 @@
+Export Compliance / App Encryption:
+
+Answer when submitting: NO — app does not use non-exempt encryption.
+
+Reason: Only standard HTTPS/TLS to our server. ITSAppUsesNonExemptEncryption is set to false in Info.plist.
+
+Do NOT upload encryption documentation unless Apple requests it.

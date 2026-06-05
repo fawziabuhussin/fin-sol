@@ -1,0 +1,6 @@
+Content Rights — answer in App Store Connect:
+
+Question: Does your app contain, show, or access third-party content?
+Answer: No
+
+(All financial data is entered by the user. No licensed third-party media, music, or catalog content.)
