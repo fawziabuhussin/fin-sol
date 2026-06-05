@@ -37,6 +37,66 @@ export function BrandIconSvg({ size = 120 }: { size?: number }) {
   );
 }
 
+/** Branded splash screen for iOS LaunchScreen (square, scaleAspectFill). */
+export function splashImageResponse(size: number) {
+  const logo = Math.round(size * 0.18);
+  return (
+    <div
+      style={{
+        width: "100%",
+        height: "100%",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        flexDirection: "column",
+        gap: size * 0.04,
+        background: "linear-gradient(145deg, #4F46E5 0%, #6D28D9 50%, #7C3AED 100%)",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          width: logo * 1.55,
+          height: logo * 1.55,
+          borderRadius: logo * 0.32,
+          background: "rgba(255,255,255,0.14)",
+        }}
+      >
+        <BrandIconSvg size={logo} />
+      </div>
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          color: "white",
+        }}
+      >
+        <span
+          style={{
+            fontSize: logo * 0.42,
+            fontWeight: 800,
+            letterSpacing: "-0.02em",
+          }}
+        >
+          Fin$ol
+        </span>
+        <span
+          style={{
+            fontSize: logo * 0.18,
+            opacity: 0.85,
+            marginTop: logo * 0.06,
+          }}
+        >
+          Smart Finance
+        </span>
+      </div>
+    </div>
+  );
+}
+
 /** App Store icons must be square with no transparent pixels (Apple applies the mask). */
 export function brandIconImageResponse(
   width: number,

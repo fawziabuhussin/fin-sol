@@ -20,10 +20,12 @@ export function NativeShell() {
         ]);
 
         await StatusBar.setStyle({ style: Style.Light });
-        if (Capacitor.getPlatform() === "android") {
+        if (Capacitor.getPlatform() === "ios") {
+          await StatusBar.setOverlaysWebView({ overlay: false });
+        } else if (Capacitor.getPlatform() === "android") {
           await StatusBar.setBackgroundColor({ color: "#4F46E5" });
         }
-        await SplashScreen.hide();
+        await SplashScreen.hide({ fadeOutDuration: 300 });
 
         const { Network } = await import("@capacitor/network");
         const status = await Network.getStatus();
