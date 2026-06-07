@@ -34,6 +34,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { formatCurrency } from "@/lib/utils";
+import { computeAssetValueIls } from "@/lib/savings-asset-value";
 
 export type SavingsSummaryData = {
   summary: {
@@ -54,9 +55,12 @@ export type SavingsSummaryData = {
     color: string | null;
     pensionTotal: number;
     kerenTotal: number;
+    employeeTotal: number;
+    employerTotal: number;
     kupotTotal: number;
     latestPension: number;
     latestKeren: number;
+    latestEmployerTotal: number;
   }[];
   planProgress: {
     id: string;
@@ -160,7 +164,11 @@ function AssetCard({
     });
   };
 
-  const previewValue = Math.round(form.quantity * form.unitPrice * 100) / 100;
+  const previewValue = computeAssetValueIls(
+    asset.kind,
+    form.quantity,
+    form.unitPrice
+  );
 
   return (
     <motion.div
@@ -415,6 +423,56 @@ export function SavingsSummary({
         ))}
       </div>
 
+      {/* Accumulated total breakdown */}
+      <Card className="border-emerald-100 bg-gradient-to-l from-emerald-50/80 to-white shadow-sm">
+        <CardContent className="p-5">
+          <p className="text-sm font-bold text-slate-900">
+            تفصيل إجمالي المتراكم — {formatCurrency(summary.accumulatedTotal)}
+          </p>
+          <p className="mt-1 text-xs text-slate-500">
+            كل مكوّن يُضاف فقط عند تسجيل الدفع (جمعيات ✓ / راتب ✓)
+          </p>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {[
+              {
+                label: "جمعيات (مدفوع)",
+                value: summary.jamiyaPaidTotal,
+                color: "text-indigo-700",
+                bg: "bg-indigo-50",
+              },
+              {
+                label: "קופות (עובד + מעסיק)",
+                value: summary.kupotTotal,
+                color: "text-violet-700",
+                bg: "bg-violet-50",
+              },
+              {
+                label: "ذهب",
+                value: summary.goldTotal,
+                color: "text-amber-700",
+                bg: "bg-amber-50",
+              },
+              {
+                label: "دولار ($ → ₪)",
+                value: summary.usdTotal,
+                color: "text-emerald-700",
+                bg: "bg-emerald-50",
+              },
+            ].map((row) => (
+              <div
+                key={row.label}
+                className={`rounded-xl border border-slate-100 ${row.bg} p-3`}
+              >
+                <p className="text-xs text-slate-600">{row.label}</p>
+                <p className={`mt-1 text-lg font-extrabold ${row.color}`}>
+                  {formatCurrency(row.value)}
+                </p>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
       {showKupotLink && summary.kupotTotal > 0 && (
         <Link href="/savings/kupot">
           <Card className="border-violet-100 bg-gradient-to-l from-violet-50 to-indigo-50 shadow-sm transition hover:shadow-md">
@@ -425,22 +483,22 @@ export function SavingsSummary({
                   קופות — פנסיה וקרן השתלמות
                 </p>
                 <p className="mt-1 text-xs text-slate-600">
-                  {kupotWithBalance.length} جهة عمل · أموال في الصندوق وليست نقداً
+                  {kupotWithBalance.length} جهة عمل · עובד + מעסיק
                 </p>
                 <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-sm">
                   <span>
-                    <span className="text-slate-500">פנסיה: </span>
+                    <span className="text-slate-500">חלקך: </span>
                     <span className="font-bold text-violet-800">
                       {formatCurrency(
-                        kupotWithBalance.reduce((s, k) => s + k.pensionTotal, 0)
+                        kupotWithBalance.reduce((s, k) => s + k.employeeTotal, 0)
                       )}
                     </span>
                   </span>
                   <span>
-                    <span className="text-slate-500">קרן: </span>
+                    <span className="text-slate-500">מעסיק: </span>
                     <span className="font-bold text-indigo-800">
                       {formatCurrency(
-                        kupotWithBalance.reduce((s, k) => s + k.kerenTotal, 0)
+                        kupotWithBalance.reduce((s, k) => s + k.employerTotal, 0)
                       )}
                     </span>
                   </span>

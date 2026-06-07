@@ -3,14 +3,10 @@ import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/session";
 import { handleApiError } from "@/lib/api-error";
 import { savingsAssetPatchSchema } from "@/lib/validations/savings";
-
-function computeValueIls(
-  quantity: number,
-  unitPrice: number,
-  priceCurrency: string
-) {
-  return Math.round(quantity * unitPrice * 100) / 100;
-}
+import {
+  computeAssetValueIls,
+  normalizeUsdRate,
+} from "@/lib/savings-asset-value";
 
 export async function PATCH(
   req: Request,
@@ -37,12 +33,14 @@ export async function PATCH(
       data.quantity !== undefined
         ? data.quantity
         : Number(existing.quantity);
-    const unitPrice =
+    let unitPrice =
       data.unitPrice !== undefined
         ? data.unitPrice
         : Number(existing.unitPrice);
-    const priceCurrency = data.priceCurrency ?? existing.priceCurrency;
-    const valueIls = computeValueIls(quantity, unitPrice, priceCurrency);
+    if (existing.kind === "USD") {
+      unitPrice = normalizeUsdRate(unitPrice);
+    }
+    const valueIls = computeAssetValueIls(existing.kind, quantity, unitPrice);
 
     const updated = await prisma.savingsAsset.update({
       where: { id },

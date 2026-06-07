@@ -4,6 +4,10 @@ import { requireUser } from "@/lib/session";
 import { transactionSchema } from "@/lib/validations/transactions";
 import { projectSchema } from "@/lib/validations/projects";
 import { savingsAssetPurchaseSchema } from "@/lib/validations/savings";
+import {
+  computeAssetValueIls,
+  normalizeUsdRate,
+} from "@/lib/savings-asset-value";
 
 const quickAddSchema = {
   TRANSACTION: transactionSchema,
@@ -26,7 +30,9 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
       }
       const d = parsed.data;
-      const valueIls = Math.round(d.quantity * d.unitPrice * 100) / 100;
+      const unitPrice =
+        d.kind === "USD" ? normalizeUsdRate(d.unitPrice) : d.unitPrice;
+      const valueIls = computeAssetValueIls(d.kind, d.quantity, unitPrice);
       const title =
         d.title ||
         (d.kind === "GOLD" ? `ذهب ${d.goldKarat ?? 21}K` : "دولار أمريكي");
@@ -37,13 +43,23 @@ export async function POST(req: Request) {
       });
 
       if (asset) {
-        const newQty = Number(asset.quantity) + d.quantity;
-        const newValue = Math.round(newQty * d.unitPrice * 100) / 100;
+        const oldQty = Number(asset.quantity);
+        const newQty = oldQty + d.quantity;
+        const oldValue = computeAssetValueIls(
+          d.kind,
+          oldQty,
+          Number(asset.unitPrice)
+        );
+        const newValue = Math.round((oldValue + valueIls) * 100) / 100;
+        const avgRate =
+          d.kind === "USD" && newQty > 0
+            ? Math.round((newValue / newQty) * 10000) / 10000
+            : unitPrice;
         asset = await prisma.savingsAsset.update({
           where: { id: asset.id },
           data: {
             quantity: newQty,
-            unitPrice: d.unitPrice,
+            unitPrice: avgRate,
             valueIls: newValue,
             ...(d.kind === "GOLD" && d.goldKarat
               ? { goldKarat: d.goldKarat }
@@ -57,7 +73,7 @@ export async function POST(req: Request) {
             kind: d.kind,
             title,
             quantity: d.quantity,
-            unitPrice: d.unitPrice,
+            unitPrice,
             goldKarat: d.kind === "GOLD" ? (d.goldKarat ?? 21) : null,
             priceCurrency: d.kind === "USD" ? "USD" : "ILS",
             valueIls,
@@ -70,7 +86,7 @@ export async function POST(req: Request) {
         data: {
           assetId: asset.id,
           quantity: d.quantity,
-          unitPrice: d.unitPrice,
+          unitPrice,
           valueIls,
           purchasedAt: new Date(d.purchasedAt),
           notes: d.notes || null,

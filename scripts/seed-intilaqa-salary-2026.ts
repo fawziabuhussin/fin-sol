@@ -48,6 +48,13 @@ const slip = {
           employer: 333.2,
           base: 4000,
         },
+        {
+          fund: "114",
+          type: "קרן השתלמות",
+          employee: 100,
+          employer: 300,
+          base: 4000,
+        },
       ],
     },
     keren: {

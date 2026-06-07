@@ -12,6 +12,11 @@ import { monthRangeUTC, utcMonth, yearRangeUTC } from "@/lib/dates";
 import { INCOME_SOURCES, monthLabel } from "@/lib/finance-labels";
 import { paidAtForPeriod } from "@/lib/savings-schedule";
 import type { SalarySlipBreakdown } from "@/lib/payslip-types";
+import { computeAssetValueIls } from "@/lib/savings-asset-value";
+import {
+  kupotAmountsFromSlip,
+  sumKupotAmounts,
+} from "@/lib/kupot-totals";
 import {
   repairPaidInstallmentTransactions,
   sumPaidInstallments,
@@ -1081,7 +1086,7 @@ export async function getEmployerKupot(userId: string) {
     where: { userId, active: true },
     include: {
       salarySlips: {
-        where: { worked: true },
+        where: { worked: true, paid: true },
         orderBy: [{ periodYear: "asc" }, { periodMonth: "asc" }],
       },
       savingsPlans: {
@@ -1092,31 +1097,28 @@ export async function getEmployerKupot(userId: string) {
   });
 
   return employers.map((emp) => {
-    const pensionTotal = emp.salarySlips.reduce(
-      (sum, s) => sum + decimalToNumber(s.pension),
-      0
-    );
-    const kerenTotal = emp.salarySlips.reduce(
-      (sum, s) => sum + decimalToNumber(s.kerenHishtalmut),
-      0
-    );
+    const slipAmounts = emp.salarySlips.map((s) => kupotAmountsFromSlip(s));
+    const totals = sumKupotAmounts(slipAmounts);
     const latest = emp.salarySlips[emp.salarySlips.length - 1];
+    const latestAmounts = latest ? kupotAmountsFromSlip(latest) : null;
     const monthlyHistory = emp.salarySlips
-      .filter(
-        (s) =>
-          decimalToNumber(s.pension) > 0 ||
-          decimalToNumber(s.kerenHishtalmut) > 0
-      )
+      .filter((s) => kupotAmountsFromSlip(s).total > 0)
       .map((s) => {
-        const pension = decimalToNumber(s.pension);
-        const keren = decimalToNumber(s.kerenHishtalmut);
+        const amounts = kupotAmountsFromSlip(s);
         return {
           year: s.periodYear,
           month: s.periodMonth,
           label: `${monthLabel(s.periodMonth)} ${s.periodYear}`,
-          pension,
-          keren,
-          total: pension + keren,
+          pension: amounts.pensionEmployee,
+          keren: amounts.kerenEmployee,
+          pensionEmployer: amounts.pensionEmployer,
+          kerenEmployer: amounts.kerenEmployer,
+          employeeTotal: amounts.employeeTotal,
+          employerTotal: amounts.employerTotal,
+          total: amounts.total,
+          paid: s.paid,
+          paidAt: s.paidAt?.toISOString().slice(0, 10) ?? null,
+          breakdown: (s.slipBreakdown as SalarySlipBreakdown | null) ?? null,
         };
       });
 
@@ -1124,14 +1126,17 @@ export async function getEmployerKupot(userId: string) {
       id: emp.id,
       name: emp.name,
       color: emp.color,
-      pensionTotal,
-      kerenTotal,
-      kupotTotal: pensionTotal + kerenTotal,
+      pensionTotal: totals.pensionEmployee + totals.pensionEmployer,
+      kerenTotal: totals.kerenEmployee + totals.kerenEmployer,
+      employeeTotal: totals.employeeTotal,
+      employerTotal: totals.employerTotal,
+      kupotTotal: totals.total,
       latestMonth: latest
         ? { year: latest.periodYear, month: latest.periodMonth }
         : null,
-      latestPension: latest ? decimalToNumber(latest.pension) : 0,
-      latestKeren: latest ? decimalToNumber(latest.kerenHishtalmut) : 0,
+      latestPension: latestAmounts?.pensionEmployee ?? 0,
+      latestKeren: latestAmounts?.kerenEmployee ?? 0,
+      latestEmployerTotal: latestAmounts?.employerTotal ?? 0,
       monthlyHistory,
       plans: emp.savingsPlans.map((p) => ({
         id: p.id,
@@ -1145,13 +1150,16 @@ export async function getEmployerKupot(userId: string) {
 export async function getKupotPageData(userId: string) {
   const employers = await getEmployerKupot(userId);
   const active = employers.filter((e) => e.kupotTotal > 0);
-  const pensionGrand = active.reduce((s, e) => s + e.pensionTotal, 0);
-  const kerenGrand = active.reduce((s, e) => s + e.kerenTotal, 0);
+  const employeeGrand = active.reduce((s, e) => s + e.employeeTotal, 0);
+  const employerGrand = active.reduce((s, e) => s + e.employerTotal, 0);
+  const kupotGrand = active.reduce((s, e) => s + e.kupotTotal, 0);
   return {
     summary: {
-      pensionTotal: pensionGrand,
-      kerenTotal: kerenGrand,
-      kupotTotal: pensionGrand + kerenGrand,
+      pensionTotal: active.reduce((s, e) => s + e.pensionTotal, 0),
+      kerenTotal: active.reduce((s, e) => s + e.kerenTotal, 0),
+      employeeTotal: employeeGrand,
+      employerTotal: employerGrand,
+      kupotTotal: kupotGrand,
       employerCount: active.length,
     },
     employers: active,
@@ -1522,15 +1530,22 @@ export async function getSavingsSummary(userId: string) {
     };
   });
 
-  const assetItems = assets.map((asset) => ({
+  const assetItems = assets.map((asset) => {
+    const quantity = decimalToNumber(asset.quantity);
+    const unitPrice = decimalToNumber(asset.unitPrice);
+    const valueIls = computeAssetValueIls(asset.kind, quantity, unitPrice);
+    return {
     id: asset.id,
     kind: asset.kind as "GOLD" | "USD",
     title: asset.title,
-    quantity: decimalToNumber(asset.quantity),
-    unitPrice: decimalToNumber(asset.unitPrice),
+    quantity,
+    unitPrice:
+      asset.kind === "USD" && unitPrice > 8
+        ? valueIls / (quantity || 1)
+        : unitPrice,
     goldKarat: asset.goldKarat ?? 21,
     priceCurrency: asset.priceCurrency,
-    valueIls: decimalToNumber(asset.valueIls),
+    valueIls,
     updatedAt: asset.updatedAt.toISOString().slice(0, 10),
     history: asset.entries.map((e) => ({
       id: e.id,
@@ -1540,7 +1555,8 @@ export async function getSavingsSummary(userId: string) {
       purchasedAt: e.purchasedAt.toISOString().slice(0, 10),
       notes: e.notes,
     })),
-  }));
+  };
+  });
 
   const kupotTotal = kupot.reduce((sum, k) => sum + k.kupotTotal, 0);
 
@@ -1557,6 +1573,9 @@ export async function getSavingsSummary(userId: string) {
   const portfolioChart = [
     ...(jamiyaPaidTotal > 0
       ? [{ name: "جمعيات (مدفوع)", value: jamiyaPaidTotal, fill: "#6366f1" }]
+      : []),
+    ...(kupotTotal > 0
+      ? [{ name: "קופות", value: kupotTotal, fill: "#8b5cf6" }]
       : []),
     ...(goldTotal > 0 ? [{ name: "ذهب", value: goldTotal, fill: "#f59e0b" }] : []),
     ...(usdTotal > 0 ? [{ name: "دولار", value: usdTotal, fill: "#059669" }] : []),

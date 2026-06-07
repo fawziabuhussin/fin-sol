@@ -4,6 +4,7 @@ import { requireUser } from "@/lib/session";
 import { handleApiError } from "@/lib/api-error";
 import { salarySchema } from "@/lib/validations/salary";
 import { syncSalarySlipIncome } from "@/lib/salary-income-sync";
+import { resolveEmployerPaidSlip } from "@/lib/employer-paid-slip";
 
 export async function POST(req: Request) {
   try {
@@ -22,6 +23,31 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Employer not found" }, { status: 404 });
     }
 
+    let slip = { ...data };
+    if (data.paid) {
+      const template = resolveEmployerPaidSlip(
+        employer.name,
+        data.periodYear,
+        data.periodMonth
+      );
+      if (template) {
+        slip = {
+          ...data,
+          worked: true,
+          paid: true,
+          gross: template.gross,
+          net: template.net,
+          tax: template.tax,
+          pension: template.pension,
+          kerenHishtalmut: template.kerenHishtalmut,
+          fees: template.fees,
+          bonus: template.bonus,
+          notes: template.notes,
+          slipBreakdown: template.slipBreakdown,
+        };
+      }
+    }
+
     const created = await prisma.salarySlip.upsert({
       where: {
         userId_employerId_periodYear_periodMonth: {
@@ -34,38 +60,38 @@ export async function POST(req: Request) {
       create: {
         userId: user.id,
         employerId: data.employerId,
-        periodYear: data.periodYear,
-        periodMonth: data.periodMonth,
-        worked: data.worked ?? true,
-        gross: data.gross,
-        net: data.net,
-        tax: data.tax,
-        pension: data.pension,
-        kerenHishtalmut: data.kerenHishtalmut,
-        fees: data.fees ?? 0,
-        bonus: data.bonus ?? 0,
-        paid: data.paid ?? false,
-        paidAt: data.paid ? new Date() : null,
-        notes: data.notes || null,
-        slipFileUrl: data.slipFileUrl || null,
-        slipBreakdown: data.slipBreakdown ?? undefined,
+        periodYear: slip.periodYear,
+        periodMonth: slip.periodMonth,
+        worked: slip.worked ?? true,
+        gross: slip.gross,
+        net: slip.net,
+        tax: slip.tax,
+        pension: slip.pension,
+        kerenHishtalmut: slip.kerenHishtalmut,
+        fees: slip.fees ?? 0,
+        bonus: slip.bonus ?? 0,
+        paid: slip.paid ?? false,
+        paidAt: slip.paid ? new Date() : null,
+        notes: slip.notes || null,
+        slipFileUrl: slip.slipFileUrl || null,
+        slipBreakdown: slip.slipBreakdown ?? undefined,
       },
       update: {
-        ...(data.worked !== undefined ? { worked: data.worked } : {}),
-        ...(data.paid !== undefined
-          ? { paid: data.paid, paidAt: data.paid ? new Date() : null }
+        ...(slip.worked !== undefined ? { worked: slip.worked } : {}),
+        ...(slip.paid !== undefined
+          ? { paid: slip.paid, paidAt: slip.paid ? new Date() : null }
           : {}),
-        gross: data.gross,
-        net: data.net,
-        tax: data.tax,
-        pension: data.pension,
-        kerenHishtalmut: data.kerenHishtalmut,
-        fees: data.fees ?? 0,
-        bonus: data.bonus ?? 0,
-        notes: data.notes || null,
-        slipFileUrl: data.slipFileUrl || null,
-        ...(data.slipBreakdown !== undefined
-          ? { slipBreakdown: data.slipBreakdown }
+        gross: slip.gross,
+        net: slip.net,
+        tax: slip.tax,
+        pension: slip.pension,
+        kerenHishtalmut: slip.kerenHishtalmut,
+        fees: slip.fees ?? 0,
+        bonus: slip.bonus ?? 0,
+        notes: slip.notes || null,
+        slipFileUrl: slip.slipFileUrl || null,
+        ...(slip.slipBreakdown !== undefined
+          ? { slipBreakdown: slip.slipBreakdown }
           : {}),
       },
     });

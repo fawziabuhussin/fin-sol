@@ -3,14 +3,10 @@ import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/session";
 import { handleApiError } from "@/lib/api-error";
 import { savingsAssetSchema } from "@/lib/validations/savings";
-
-function computeValueIls(
-  quantity: number,
-  unitPrice: number,
-  priceCurrency: string
-) {
-  return Math.round(quantity * unitPrice * 100) / 100;
-}
+import {
+  computeAssetValueIls,
+  normalizeUsdRate,
+} from "@/lib/savings-asset-value";
 
 export async function POST(req: Request) {
   try {
@@ -22,11 +18,9 @@ export async function POST(req: Request) {
     }
 
     const data = parsed.data;
-    const valueIls = computeValueIls(
-      data.quantity,
-      data.unitPrice,
-      data.priceCurrency
-    );
+    const unitPrice =
+      data.kind === "USD" ? normalizeUsdRate(data.unitPrice) : data.unitPrice;
+    const valueIls = computeAssetValueIls(data.kind, data.quantity, unitPrice);
 
     const created = await prisma.savingsAsset.create({
       data: {
@@ -34,7 +28,7 @@ export async function POST(req: Request) {
         kind: data.kind,
         title: data.title,
         quantity: data.quantity,
-        unitPrice: data.unitPrice,
+        unitPrice,
         goldKarat: data.kind === "GOLD" ? (data.goldKarat ?? 21) : null,
         priceCurrency: data.priceCurrency,
         valueIls,

@@ -1,8 +1,9 @@
 "use client";
 
+import { Fragment } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { ArrowRight, Building2, Landmark, Wallet } from "lucide-react";
+import { ArrowRight, Building2, Landmark, Users, Wallet } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatCurrency } from "@/lib/utils";
 import { SavingsTabs } from "@/components/savings/savings-tabs";
@@ -11,6 +12,8 @@ export type KupotPageData = {
   summary: {
     pensionTotal: number;
     kerenTotal: number;
+    employeeTotal: number;
+    employerTotal: number;
     kupotTotal: number;
     employerCount: number;
   };
@@ -20,9 +23,12 @@ export type KupotPageData = {
     color: string | null;
     pensionTotal: number;
     kerenTotal: number;
+    employeeTotal: number;
+    employerTotal: number;
     kupotTotal: number;
     latestPension: number;
     latestKeren: number;
+    latestEmployerTotal: number;
     latestMonth: { year: number; month: number } | null;
     monthlyHistory: {
       year: number;
@@ -30,7 +36,25 @@ export type KupotPageData = {
       label: string;
       pension: number;
       keren: number;
+      pensionEmployer: number;
+      kerenEmployer: number;
+      employeeTotal: number;
+      employerTotal: number;
       total: number;
+      paid: boolean;
+      paidAt: string | null;
+      breakdown: {
+        pension?: {
+          lines?: {
+            fund?: string;
+            type?: string;
+            employee: number;
+            employer: number;
+            base?: number;
+          }[];
+        };
+        keren?: { employee: number; employer: number };
+      } | null;
     }[];
   }[];
 };
@@ -50,30 +74,37 @@ export function KupotPageClient({ data }: { data: KupotPageData }) {
         </Link>
         <h1 className="text-2xl font-extrabold">קופות — פנסיה וקרן השתלמות</h1>
         <p className="mt-1 text-sm text-slate-500">
-          أموال في صناديق العمل — ليست نقداً في اليد، لكنها جزء من ثروتك المتراكمة
+          חלקך + חלק המעסיק — נספר רק לחודשים שסומנו כ־✓ שולם
         </p>
       </div>
 
       <SavingsTabs />
 
-      {/* Grand totals */}
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {[
           {
-            label: "פנסיה מتراكمة",
-            sub: "סה״כ מכל העבודות",
-            value: summary.pensionTotal,
+            label: "חלק העובד",
+            sub: "ניכוי מהשכר",
+            value: summary.employeeTotal,
             color: "text-violet-700",
             bg: "bg-violet-50",
-            icon: Landmark,
+            icon: Wallet,
           },
           {
-            label: "קרן השתלמות",
-            sub: "סה״כ מכל העבודות",
-            value: summary.kerenTotal,
+            label: "חלק המעסיק",
+            sub: "הפרשות מעבודה",
+            value: summary.employerTotal,
             color: "text-indigo-700",
             bg: "bg-indigo-50",
-            icon: Wallet,
+            icon: Users,
+          },
+          {
+            label: "פנסיה (כולל)",
+            sub: "עובד + מעסיק",
+            value: summary.pensionTotal,
+            color: "text-purple-700",
+            bg: "bg-purple-50",
+            icon: Landmark,
           },
           {
             label: "إجمالي הקופות",
@@ -101,7 +132,7 @@ export function KupotPageClient({ data }: { data: KupotPageData }) {
                     <p className="text-xs text-slate-500">{kpi.sub}</p>
                   </div>
                 </div>
-                <p className={`mt-4 text-3xl font-extrabold ${kpi.color}`}>
+                <p className={`mt-4 text-2xl font-extrabold sm:text-3xl ${kpi.color}`}>
                   {formatCurrency(kpi.value)}
                 </p>
               </CardContent>
@@ -140,58 +171,56 @@ export function KupotPageClient({ data }: { data: KupotPageData }) {
                 </div>
               </CardHeader>
               <CardContent className="space-y-5 p-5">
-                {/* Two clear stat blocks */}
-                <div className="grid gap-4 sm:grid-cols-2">
+                <div className="grid gap-4 sm:grid-cols-3">
                   <div className="rounded-2xl border border-violet-100 bg-violet-50/60 p-5">
-                    <p className="text-sm font-semibold text-violet-800">
-                      פנסיה מتراكمة
-                    </p>
-                    <p className="mt-2 text-3xl font-extrabold text-violet-900">
-                      {formatCurrency(emp.pensionTotal)}
+                    <p className="text-sm font-semibold text-violet-800">חלקך</p>
+                    <p className="mt-2 text-2xl font-extrabold text-violet-900">
+                      {formatCurrency(emp.employeeTotal)}
                     </p>
                   </div>
                   <div className="rounded-2xl border border-indigo-100 bg-indigo-50/60 p-5">
-                    <p className="text-sm font-semibold text-indigo-800">
-                      קרן השתלמות
+                    <p className="text-sm font-semibold text-indigo-800">חלק המעסיק</p>
+                    <p className="mt-2 text-2xl font-extrabold text-indigo-900">
+                      {formatCurrency(emp.employerTotal)}
                     </p>
-                    <p className="mt-2 text-3xl font-extrabold text-indigo-900">
-                      {formatCurrency(emp.kerenTotal)}
+                  </div>
+                  <div className="rounded-2xl border border-emerald-100 bg-emerald-50/60 p-5">
+                    <p className="text-sm font-semibold text-emerald-800">סה״כ</p>
+                    <p className="mt-2 text-2xl font-extrabold text-emerald-900">
+                      {formatCurrency(emp.kupotTotal)}
                     </p>
                   </div>
                 </div>
 
-                {(emp.latestPension > 0 || emp.latestKeren > 0) && (
+                {emp.latestMonth && (
                   <div className="rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-700">
                     <span className="font-semibold text-slate-900">آخر شهر: </span>
-                    פנסיה {formatCurrency(emp.latestPension)}
+                    עובד {formatCurrency(emp.latestPension + emp.latestKeren)}
                     <span className="mx-2 text-slate-300">·</span>
-                    קרן {formatCurrency(emp.latestKeren)}
-                    {emp.latestMonth && (
-                      <span className="mr-2 text-slate-500">
-                        ({emp.latestMonth.month}/{emp.latestMonth.year})
-                      </span>
-                    )}
+                    מעסיק {formatCurrency(emp.latestEmployerTotal)}
+                    <span className="mr-2 text-slate-500">
+                      ({emp.latestMonth.month}/{emp.latestMonth.year})
+                    </span>
                   </div>
                 )}
 
-                {/* Monthly history table */}
                 {emp.monthlyHistory.length > 0 && (
                   <div>
                     <p className="mb-2 text-sm font-bold text-slate-800">
                       السجل الشهري
                     </p>
                     <div className="overflow-x-auto rounded-xl border border-slate-100">
-                      <table className="w-full min-w-[320px] text-sm">
+                      <table className="w-full min-w-[480px] text-sm">
                         <thead>
                           <tr className="border-b border-slate-100 bg-slate-50 text-right">
                             <th className="px-4 py-2.5 font-semibold text-slate-600">
                               الشهر
                             </th>
                             <th className="px-4 py-2.5 font-semibold text-violet-700">
-                              פנסיה
+                              חלקך
                             </th>
                             <th className="px-4 py-2.5 font-semibold text-indigo-700">
-                              קרן השתלמות
+                              חלק המעסיק
                             </th>
                             <th className="px-4 py-2.5 font-semibold text-slate-800">
                               סה״כ
@@ -199,34 +228,66 @@ export function KupotPageClient({ data }: { data: KupotPageData }) {
                           </tr>
                         </thead>
                         <tbody>
-                          {emp.monthlyHistory.map((row) => (
-                            <tr
-                              key={`${row.year}-${row.month}`}
-                              className="border-b border-slate-50 last:border-0"
-                            >
-                              <td className="px-4 py-2.5 font-medium text-slate-900">
-                                {row.label}
-                              </td>
-                              <td className="px-4 py-2.5 text-violet-800">
-                                {formatCurrency(row.pension)}
-                              </td>
-                              <td className="px-4 py-2.5 text-indigo-800">
-                                {formatCurrency(row.keren)}
-                              </td>
-                              <td className="px-4 py-2.5 font-bold text-slate-900">
-                                {formatCurrency(row.total)}
-                              </td>
-                            </tr>
-                          ))}
+                          {emp.monthlyHistory.map((row) => {
+                            const lines = row.breakdown?.pension?.lines ?? [];
+                            return (
+                              <Fragment key={`${row.year}-${row.month}`}>
+                                <tr className="border-b border-slate-50">
+                                  <td className="px-4 py-2.5 font-medium text-slate-900">
+                                    {row.label}
+                                    {row.paidAt && (
+                                      <span className="mr-2 block text-[10px] text-emerald-600">
+                                        ✓ {row.paidAt}
+                                      </span>
+                                    )}
+                                  </td>
+                                  <td className="px-4 py-2.5 text-violet-800">
+                                    {formatCurrency(row.employeeTotal)}
+                                  </td>
+                                  <td className="px-4 py-2.5 text-indigo-800">
+                                    {formatCurrency(row.employerTotal)}
+                                  </td>
+                                  <td className="px-4 py-2.5 font-bold text-slate-900">
+                                    {formatCurrency(row.total)}
+                                  </td>
+                                </tr>
+                                {lines.length > 0 &&
+                                  lines.map((line, li) => (
+                                    <tr
+                                      key={`${row.year}-${row.month}-line-${li}`}
+                                      className="border-b border-slate-50 bg-slate-50/50 text-xs last:border-0"
+                                    >
+                                      <td className="px-4 py-1.5 pr-8 text-slate-600">
+                                        {line.type}
+                                        {line.fund ? ` · ${line.fund}` : ""}
+                                      </td>
+                                      <td className="px-4 py-1.5 text-violet-700">
+                                        {line.employee > 0
+                                          ? formatCurrency(line.employee)
+                                          : "—"}
+                                      </td>
+                                      <td className="px-4 py-1.5 text-indigo-700">
+                                        {formatCurrency(line.employer)}
+                                      </td>
+                                      <td className="px-4 py-1.5 text-slate-600">
+                                        {line.base
+                                          ? `בסיס ${line.base.toLocaleString("ar-IL")} ₪`
+                                          : "—"}
+                                      </td>
+                                    </tr>
+                                  ))}
+                              </Fragment>
+                            );
+                          })}
                         </tbody>
                         <tfoot>
                           <tr className="bg-slate-50 font-bold">
                             <td className="px-4 py-2.5 text-slate-800">المجموع</td>
                             <td className="px-4 py-2.5 text-violet-800">
-                              {formatCurrency(emp.pensionTotal)}
+                              {formatCurrency(emp.employeeTotal)}
                             </td>
                             <td className="px-4 py-2.5 text-indigo-800">
-                              {formatCurrency(emp.kerenTotal)}
+                              {formatCurrency(emp.employerTotal)}
                             </td>
                             <td className="px-4 py-2.5 text-slate-900">
                               {formatCurrency(emp.kupotTotal)}
