@@ -9,6 +9,7 @@ export type MarketRates = {
   fetchedAt: string;
   usdIls: number;
   usdIlsDate: string;
+  usdIlsSource: "boi" | "frankfurter";
   gold: {
     karat: GoldKarat;
     pricePerGramIls: number;
@@ -17,19 +18,54 @@ export type MarketRates = {
   };
 };
 
-async function fetchUsdIls() {
+/** Bank of Israel representative rate (שער יציג) — typically ~2.9 ₪/$. */
+async function fetchUsdIlsFromBoi() {
+  const res = await fetch("https://boi.org.il/PublicApi/GetExchangeRates", {
+    cache: "no-store",
+    redirect: "follow",
+  });
+  if (!res.ok) throw new Error("BOI USD/ILS rate unavailable");
+  const data = (await res.json()) as {
+    exchangeRates: {
+      key: string;
+      currentExchangeRate: number;
+      unit: number;
+      lastUpdate: string;
+    }[];
+  };
+  const usd = data.exchangeRates?.find((r) => r.key === "USD");
+  if (!usd?.currentExchangeRate || usd.unit <= 0) {
+    throw new Error("Invalid BOI USD rate");
+  }
+  const rate = usd.currentExchangeRate / usd.unit;
+  return {
+    rate,
+    date: usd.lastUpdate.slice(0, 10),
+    source: "boi" as const,
+  };
+}
+
+async function fetchUsdIlsFrankfurter() {
   const res = await fetch(
     "https://api.frankfurter.app/latest?from=USD&to=ILS",
-    { next: { revalidate: 3600 } }
+    { cache: "no-store", redirect: "follow" }
   );
-  if (!res.ok) throw new Error("USD/ILS rate unavailable");
+  if (!res.ok) throw new Error("Frankfurter USD/ILS rate unavailable");
   const data = (await res.json()) as {
     date: string;
     rates: { ILS: number };
   };
   const rate = data.rates?.ILS;
-  if (!rate || rate <= 0) throw new Error("Invalid USD/ILS rate");
-  return { rate, date: data.date };
+  if (!rate || rate <= 0) throw new Error("Invalid Frankfurter USD/ILS rate");
+  return { rate, date: data.date, source: "frankfurter" as const };
+}
+
+async function fetchUsdIls() {
+  try {
+    return await fetchUsdIlsFromBoi();
+  } catch {
+    return await fetchUsdIlsFrankfurter();
+  }
 }
 
 async function fetchGoldUsdPerOz() {
@@ -61,6 +97,7 @@ export async function getMarketRates(karat: GoldKarat = 21): Promise<MarketRates
     fetchedAt: new Date().toISOString(),
     usdIls: Math.round(usd.rate * 10000) / 10000,
     usdIlsDate: usd.date,
+    usdIlsSource: usd.source,
     gold: {
       karat,
       pricePerGramIls,

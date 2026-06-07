@@ -3,10 +3,8 @@ import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/session";
 import { handleApiError } from "@/lib/api-error";
 import { savingsAssetPatchSchema } from "@/lib/validations/savings";
-import {
-  computeAssetValueIls,
-  normalizeUsdRate,
-} from "@/lib/savings-asset-value";
+import { getMarketRates } from "@/lib/market-rates";
+import { computeAssetValueIls } from "@/lib/savings-asset-value";
 
 export async function PATCH(
   req: Request,
@@ -33,14 +31,20 @@ export async function PATCH(
       data.quantity !== undefined
         ? data.quantity
         : Number(existing.quantity);
-    let unitPrice =
-      data.unitPrice !== undefined
-        ? data.unitPrice
-        : Number(existing.unitPrice);
-    if (existing.kind === "USD") {
-      unitPrice = normalizeUsdRate(unitPrice);
-    }
-    const valueIls = computeAssetValueIls(existing.kind, quantity, unitPrice);
+    const liveRates =
+      existing.kind === "USD" ? await getMarketRates().catch(() => null) : null;
+    const unitPrice =
+      existing.kind === "USD" && liveRates
+        ? liveRates.usdIls
+        : data.unitPrice !== undefined
+          ? data.unitPrice
+          : Number(existing.unitPrice);
+    const valueIls = computeAssetValueIls(
+      existing.kind,
+      quantity,
+      unitPrice,
+      liveRates?.usdIls
+    );
 
     const updated = await prisma.savingsAsset.update({
       where: { id },
@@ -48,7 +52,7 @@ export async function PATCH(
         ...(data.kind !== undefined ? { kind: data.kind } : {}),
         ...(data.title !== undefined ? { title: data.title } : {}),
         ...(data.quantity !== undefined ? { quantity: data.quantity } : {}),
-        ...(data.unitPrice !== undefined ? { unitPrice: data.unitPrice } : {}),
+        unitPrice,
         ...(data.goldKarat !== undefined ? { goldKarat: data.goldKarat } : {}),
         ...(data.priceCurrency !== undefined
           ? { priceCurrency: data.priceCurrency }

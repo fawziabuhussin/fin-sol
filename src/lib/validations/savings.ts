@@ -52,12 +52,25 @@ export const savingsAssetPatchSchema = savingsAssetSchema.partial();
 
 export type SavingsAssetInput = z.infer<typeof savingsAssetSchema>;
 
-export const savingsAssetPurchaseSchema = z.object({
-  kind: z.enum(["GOLD", "USD"]),
-  quantity: z.coerce.number().positive(),
-  unitPrice: z.coerce.number().min(0),
-  goldKarat: z.coerce.number().int().min(14).max(24).optional(),
-  purchasedAt: z.string().min(1),
-  notes: z.string().max(300).optional().or(z.literal("")),
-  title: z.string().max(120).optional().or(z.literal("")),
-});
+export const savingsAssetPurchaseSchema = z
+  .object({
+    kind: z.enum(["GOLD", "USD"]),
+    quantity: z.coerce.number().positive(),
+    unitPrice: z.coerce.number().min(0).optional(),
+    goldKarat: z.coerce.number().int().min(14).max(24).optional(),
+    purchasedAt: z.string().min(1),
+    notes: z.string().max(300).optional().or(z.literal("")),
+    title: z.string().max(120).optional().or(z.literal("")),
+  })
+  .superRefine((data, ctx) => {
+    if (
+      data.kind === "GOLD" &&
+      (data.unitPrice === undefined || data.unitPrice <= 0)
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Gold requires unit price",
+        path: ["unitPrice"],
+      });
+    }
+  });

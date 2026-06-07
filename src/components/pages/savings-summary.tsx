@@ -93,12 +93,51 @@ export type SavingsSummaryData = {
     commitment: { name: string; value: number; fill: string }[];
     plans: { name: string; paid: number; remaining: number }[];
   };
+  liveRates?: {
+    usdIls: number;
+    usdIlsDate: string;
+    fetchedAt: string;
+  } | null;
 };
+
+const USD_RATE_POLL_MS = 60_000;
+
+function applyLiveUsdToAssets(
+  assets: SavingsSummaryData["assets"],
+  liveUsdIls: number | null
+): SavingsSummaryData["assets"] {
+  if (liveUsdIls == null) return assets;
+  return assets.map((asset) => {
+    if (asset.kind !== "USD") return asset;
+    const valueIls = computeAssetValueIls(
+      "USD",
+      asset.quantity,
+      liveUsdIls,
+      liveUsdIls
+    );
+    return {
+      ...asset,
+      unitPrice: liveUsdIls,
+      valueIls,
+      history: asset.history?.map((h) => ({
+        ...h,
+        unitPrice: liveUsdIls,
+        valueIls: computeAssetValueIls("USD", h.quantity, liveUsdIls, liveUsdIls),
+      })),
+    };
+  });
+}
 
 function AssetCard({
   asset,
+  liveUsdIls,
+  liveUsdDate,
+  onLiveUsd,
 }: {
   asset: SavingsSummaryData["assets"][number];
+  liveUsdIls: number | null;
+  liveUsdDate: string | null;
+  onLiveUsd: (rate: number, date: string) => void;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -117,7 +156,7 @@ function AssetCard({
       const url = isGold
         ? `/api/savings/market-rates?karat=${form.goldKarat}`
         : "/api/savings/market-rates?karat=21";
-      const res = await fetch(url);
+      const res = await fetch(url, { cache: "no-store" });
       const data = await res.json();
       if (!res.ok) {
         toast.error(data.error ?? "تعذّر جلب السعر");
@@ -129,19 +168,25 @@ function AssetCard({
           `سعر ${data.gold.karat}K: ${data.gold.pricePerGramIls.toLocaleString("ar-IL")} ₪/غرام · أونصة $${Math.round(data.gold.pricePerOzUsd).toLocaleString("en-US")}`
         );
       } else {
-        setForm((f) => ({ ...f, unitPrice: data.usdIls }));
-        setRateMeta(`سعر الصرف الرسمي: ${data.usdIls} ₪/$ · ${data.usdIlsDate}`);
+        onLiveUsd(data.usdIls, data.usdIlsDate);
+        const src =
+          data.usdIlsSource === "boi" ? "בנק ישראל" : "Frankfurter";
+        setRateMeta(`سعر الصرف (${src}): ${data.usdIls} ₪/$ · ${data.usdIlsDate}`);
       }
     } catch {
       toast.error("تعذّر الاتصال بمصدر الأسعار");
     } finally {
       setFetchingRate(false);
     }
-  }, [isGold, form.goldKarat]);
+  }, [isGold, form.goldKarat, onLiveUsd]);
 
   useEffect(() => {
     fetchLiveRate();
-  }, [fetchLiveRate]);
+    if (!isGold) {
+      const id = setInterval(fetchLiveRate, USD_RATE_POLL_MS);
+      return () => clearInterval(id);
+    }
+  }, [fetchLiveRate, isGold]);
 
   const save = () => {
     startTransition(async () => {
@@ -149,9 +194,7 @@ function AssetCard({
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(
-          isGold
-            ? form
-            : { quantity: form.quantity, unitPrice: form.unitPrice }
+          isGold ? form : { quantity: form.quantity }
         ),
       });
       if (!res.ok) {
@@ -163,11 +206,10 @@ function AssetCard({
     });
   };
 
-  const previewValue = computeAssetValueIls(
-    asset.kind,
-    form.quantity,
-    form.unitPrice
-  );
+  const usdRate = liveUsdIls ?? asset.unitPrice;
+  const previewValue = isGold
+    ? computeAssetValueIls("GOLD", form.quantity, form.unitPrice)
+    : computeAssetValueIls("USD", form.quantity, usdRate, usdRate);
 
   return (
     <motion.div
@@ -212,7 +254,11 @@ function AssetCard({
           >
             {formatCurrency(previewValue)}
           </p>
-          <p className="text-xs text-slate-500">آخر تحديث: {asset.updatedAt}</p>
+          <p className="text-xs text-slate-500">
+            {!isGold && liveUsdDate
+              ? `سعر حي · ${liveUsdDate}`
+              : `آخر تحديث: ${asset.updatedAt}`}
+          </p>
         </div>
       </div>
 
@@ -266,7 +312,7 @@ function AssetCard({
           </div>
         </div>
       ) : (
-        <div className="mt-4 grid grid-cols-2 gap-2">
+        <div className="mt-4 space-y-2">
           <div>
             <Label className="text-xs">المبلغ ($)</Label>
             <Input
@@ -281,17 +327,21 @@ function AssetCard({
             />
           </div>
           <div>
-            <Label className="text-xs">سعر الصرف (₪/$)</Label>
+            <Label className="text-xs">سعر الصرف (₪/$) — تلقائي من الإنترنت</Label>
             <Input
               type="number"
               step="0.0001"
-              value={form.unitPrice || ""}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, unitPrice: Number(e.target.value) }))
-              }
-              className="h-9"
+              readOnly
+              value={usdRate || ""}
+              className="h-9 bg-slate-50"
             />
           </div>
+          {form.quantity > 0 && usdRate > 0 && (
+            <p className="text-xs text-emerald-700">
+              {form.quantity.toLocaleString("ar-IL")} $ × {usdRate} ={" "}
+              {formatCurrency(previewValue)}
+            </p>
+          )}
         </div>
       )}
 
@@ -345,7 +395,28 @@ function AssetCard({
 }
 
 export function SavingsSummary({ data }: { data: SavingsSummaryData }) {
-  const { summary, charts, assets } = data;
+  const { summary, charts, assets: serverAssets } = data;
+  const [liveUsdIls, setLiveUsdIls] = useState<number | null>(
+    data.liveRates?.usdIls ?? null
+  );
+  const [liveUsdDate, setLiveUsdDate] = useState<string | null>(
+    data.liveRates?.usdIlsDate ?? null
+  );
+
+  const onLiveUsd = useCallback((rate: number, date: string) => {
+    setLiveUsdIls(rate);
+    setLiveUsdDate(date);
+  }, []);
+
+  const assets = applyLiveUsdToAssets(serverAssets, liveUsdIls);
+  const goldTotal = assets
+    .filter((a) => a.kind === "GOLD")
+    .reduce((s, a) => s + a.valueIls, 0);
+  const usdTotal = assets
+    .filter((a) => a.kind === "USD")
+    .reduce((s, a) => s + a.valueIls, 0);
+  const assetsTotal = goldTotal + usdTotal;
+  const accumulatedTotal = summary.jamiyaPaidTotal + assetsTotal;
   const hasChartData = charts.portfolio.length > 0;
 
   return (
@@ -362,7 +433,7 @@ export function SavingsSummary({ data }: { data: SavingsSummaryData }) {
           },
           {
             label: "إجمالي المتراكم",
-            value: summary.accumulatedTotal,
+            value: accumulatedTotal,
             icon: TrendingUp,
             color: "text-emerald-700",
             bg: "bg-emerald-50",
@@ -419,7 +490,7 @@ export function SavingsSummary({ data }: { data: SavingsSummaryData }) {
       <Card className="border-emerald-100 bg-gradient-to-l from-emerald-50/80 to-white shadow-sm">
         <CardContent className="p-5">
           <p className="text-sm font-bold text-slate-900">
-            تفصيل إجمالي المتراكم — {formatCurrency(summary.accumulatedTotal)}
+            تفصيل إجمالي المتراكم — {formatCurrency(accumulatedTotal)}
           </p>
           <p className="mt-1 text-xs text-slate-500">
             جمعيات مدفوعة + قيمة الأصول (ذهب ودولار) — بدون קופות
@@ -440,7 +511,7 @@ export function SavingsSummary({ data }: { data: SavingsSummaryData }) {
               },
               {
                 label: "دولار ($ → ₪)",
-                value: summary.usdTotal,
+                value: usdTotal,
                 color: "text-emerald-700",
                 bg: "bg-emerald-50",
               },
@@ -474,7 +545,13 @@ export function SavingsSummary({ data }: { data: SavingsSummaryData }) {
         ) : (
           <div className="grid gap-4 md:grid-cols-2">
             {assets.map((asset) => (
-              <AssetCard key={asset.id} asset={asset} />
+              <AssetCard
+                key={asset.id}
+                asset={asset}
+                liveUsdIls={liveUsdIls}
+                liveUsdDate={liveUsdDate}
+                onLiveUsd={onLiveUsd}
+              />
             ))}
           </div>
         )}
@@ -482,12 +559,12 @@ export function SavingsSummary({ data }: { data: SavingsSummaryData }) {
           <p className="mt-3 text-center text-sm text-slate-600">
             إجمالي قيمة الأصول:{" "}
             <span className="font-bold text-emerald-700">
-              {formatCurrency(summary.assetsTotal)}
+              {formatCurrency(assetsTotal)}
             </span>
             {" · "}
-            <span className="text-amber-700">ذهب {formatCurrency(summary.goldTotal)}</span>
+            <span className="text-amber-700">ذهب {formatCurrency(goldTotal)}</span>
             {" · "}
-            <span className="text-emerald-700">دولار {formatCurrency(summary.usdTotal)}</span>
+            <span className="text-emerald-700">دولار {formatCurrency(usdTotal)}</span>
           </p>
         )}
       </div>

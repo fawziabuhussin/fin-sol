@@ -12,6 +12,7 @@ import { monthRangeUTC, utcMonth, yearRangeUTC } from "@/lib/dates";
 import { INCOME_SOURCES, monthLabel } from "@/lib/finance-labels";
 import { paidAtForPeriod } from "@/lib/savings-schedule";
 import type { SalarySlipBreakdown } from "@/lib/payslip-types";
+import { getMarketRates } from "@/lib/market-rates";
 import { computeAssetValueIls } from "@/lib/savings-asset-value";
 import {
   kupotAmountsFromSlip,
@@ -1479,6 +1480,9 @@ export async function listSavings(userId: string) {
 }
 
 export async function getSavingsSummary(userId: string) {
+  const marketRates = await getMarketRates(21).catch(() => null);
+  const liveUsdIls = marketRates?.usdIls ?? null;
+
   const [plans, assets] = await Promise.all([
     prisma.savingsPlan.findMany({
       where: { userId, type: { not: "KUPOT" } },
@@ -1531,30 +1535,43 @@ export async function getSavingsSummary(userId: string) {
 
   const assetItems = assets.map((asset) => {
     const quantity = decimalToNumber(asset.quantity);
-    const unitPrice = decimalToNumber(asset.unitPrice);
-    const valueIls = computeAssetValueIls(asset.kind, quantity, unitPrice);
+    const storedRate = decimalToNumber(asset.unitPrice);
+    const isUsd = asset.kind === "USD";
+    const unitPrice =
+      isUsd && liveUsdIls != null ? liveUsdIls : storedRate;
+    const valueIls = computeAssetValueIls(
+      asset.kind,
+      quantity,
+      unitPrice,
+      isUsd ? liveUsdIls : null
+    );
     return {
-    id: asset.id,
-    kind: asset.kind as "GOLD" | "USD",
-    title: asset.title,
-    quantity,
-    unitPrice:
-      asset.kind === "USD" && unitPrice > 8
-        ? valueIls / (quantity || 1)
-        : unitPrice,
-    goldKarat: asset.goldKarat ?? 21,
-    priceCurrency: asset.priceCurrency,
-    valueIls,
-    updatedAt: asset.updatedAt.toISOString().slice(0, 10),
-    history: asset.entries.map((e) => ({
-      id: e.id,
-      quantity: decimalToNumber(e.quantity),
-      unitPrice: decimalToNumber(e.unitPrice),
-      valueIls: decimalToNumber(e.valueIls),
-      purchasedAt: e.purchasedAt.toISOString().slice(0, 10),
-      notes: e.notes,
-    })),
-  };
+      id: asset.id,
+      kind: asset.kind as "GOLD" | "USD",
+      title: asset.title,
+      quantity,
+      unitPrice,
+      goldKarat: asset.goldKarat ?? 21,
+      priceCurrency: asset.priceCurrency,
+      valueIls,
+      updatedAt: asset.updatedAt.toISOString().slice(0, 10),
+      history: asset.entries.map((e) => {
+        const entryQty = decimalToNumber(e.quantity);
+        return {
+          id: e.id,
+          quantity: entryQty,
+          unitPrice: isUsd && liveUsdIls != null ? liveUsdIls : decimalToNumber(e.unitPrice),
+          valueIls: computeAssetValueIls(
+            asset.kind,
+            entryQty,
+            decimalToNumber(e.unitPrice),
+            isUsd ? liveUsdIls : null
+          ),
+          purchasedAt: e.purchasedAt.toISOString().slice(0, 10),
+          notes: e.notes,
+        };
+      }),
+    };
   });
 
   const goldTotal = assetItems
@@ -1597,6 +1614,14 @@ export async function getSavingsSummary(userId: string) {
       usdTotal,
       kupotTotal: 0,
     },
+    liveRates: marketRates
+      ? {
+          usdIls: marketRates.usdIls,
+          usdIlsDate: marketRates.usdIlsDate,
+          usdIlsSource: marketRates.usdIlsSource,
+          fetchedAt: marketRates.fetchedAt,
+        }
+      : null,
     planProgress,
     assets: assetItems,
     kupot: [],

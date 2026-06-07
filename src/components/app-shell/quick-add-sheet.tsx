@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Coffee, Coins, DollarSign, Minus, Plus } from "lucide-react";
 import { toast } from "sonner";
@@ -47,6 +47,25 @@ export function QuickAddSheet({
   const [assetQuantity, setAssetQuantity] = useState("");
   const [assetUnitPrice, setAssetUnitPrice] = useState("");
   const [goldKarat, setGoldKarat] = useState(21);
+  const [liveUsdIls, setLiveUsdIls] = useState<number | null>(null);
+
+  const fetchLiveUsd = useCallback(async () => {
+    try {
+      const res = await fetch("/api/savings/market-rates?karat=21", {
+        cache: "no-store",
+      });
+      const data = await res.json();
+      if (res.ok) setLiveUsdIls(data.usdIls);
+    } catch {
+      /* optional preview */
+    }
+  }, []);
+
+  useEffect(() => {
+    if (open && mode === "SAVINGS_ASSET" && assetKind === "USD") {
+      fetchLiveUsd();
+    }
+  }, [open, mode, assetKind, fetchLiveUsd]);
 
   const categories = useMemo(
     () => lookups.categories.filter((c) => c.kind === type),
@@ -65,8 +84,12 @@ export function QuickAddSheet({
     if (mode === "SAVINGS_ASSET") {
       const qty = Number(assetQuantity);
       const price = Number(assetUnitPrice);
-      if (!qty || qty <= 0 || !price || price <= 0) {
-        toast.error("أدخل الكمية والسعر");
+      if (!qty || qty <= 0) {
+        toast.error("أدخل الكمية");
+        return;
+      }
+      if (assetKind === "GOLD" && (!price || price <= 0)) {
+        toast.error("أدخل سعر الغرام");
         return;
       }
       startTransition(async () => {
@@ -78,8 +101,7 @@ export function QuickAddSheet({
             payload: {
               kind: assetKind,
               quantity: qty,
-              unitPrice: price,
-              goldKarat: assetKind === "GOLD" ? goldKarat : undefined,
+              ...(assetKind === "GOLD" ? { unitPrice: price, goldKarat } : {}),
               purchasedAt: occurredAt,
               notes: description || "",
             },
@@ -208,27 +230,57 @@ export function QuickAddSheet({
                   <Coins className="h-4 w-4" /> ذهب
                 </button>
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label>{assetKind === "USD" ? "المبلغ ($)" : "الوزن (غرام)"}</Label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    value={assetQuantity}
-                    onChange={(e) => setAssetQuantity(e.target.value)}
-                    placeholder={assetKind === "USD" ? "1200" : "10"}
-                  />
+              {assetKind === "USD" ? (
+                <div className="space-y-3">
+                  <div>
+                    <Label>المبلغ ($)</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={assetQuantity}
+                      onChange={(e) => setAssetQuantity(e.target.value)}
+                      placeholder="1200"
+                    />
+                  </div>
+                  {liveUsdIls != null && (
+                    <p className="rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+                      سعر الصرف الحي: {liveUsdIls} ₪/$
+                      {assetQuantity && Number(assetQuantity) > 0 && (
+                        <>
+                          {" "}
+                          · القيمة ≈{" "}
+                          {Math.round(
+                            Number(assetQuantity) * liveUsdIls
+                          ).toLocaleString("ar-IL")}{" "}
+                          ₪
+                        </>
+                      )}
+                    </p>
+                  )}
                 </div>
-                <div>
-                  <Label>{assetKind === "USD" ? "سعر الصرف (₪/$)" : "سعر الغرام (₪)"}</Label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    value={assetUnitPrice}
-                    onChange={(e) => setAssetUnitPrice(e.target.value)}
-                  />
+              ) : (
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label>الوزن (غرام)</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={assetQuantity}
+                      onChange={(e) => setAssetQuantity(e.target.value)}
+                      placeholder="10"
+                    />
+                  </div>
+                  <div>
+                    <Label>سعر الغرام (₪)</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={assetUnitPrice}
+                      onChange={(e) => setAssetUnitPrice(e.target.value)}
+                    />
+                  </div>
                 </div>
-              </div>
+              )}
               {assetKind === "GOLD" && (
                 <div>
                   <Label>العيار</Label>

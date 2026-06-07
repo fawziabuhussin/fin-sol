@@ -4,10 +4,8 @@ import { requireUser } from "@/lib/session";
 import { transactionSchema } from "@/lib/validations/transactions";
 import { projectSchema } from "@/lib/validations/projects";
 import { savingsAssetPurchaseSchema } from "@/lib/validations/savings";
-import {
-  computeAssetValueIls,
-  normalizeUsdRate,
-} from "@/lib/savings-asset-value";
+import { getMarketRates } from "@/lib/market-rates";
+import { computeAssetValueIls } from "@/lib/savings-asset-value";
 
 const quickAddSchema = {
   TRANSACTION: transactionSchema,
@@ -30,9 +28,20 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
       }
       const d = parsed.data;
+      const liveRates = d.kind === "USD" ? await getMarketRates() : null;
       const unitPrice =
-        d.kind === "USD" ? normalizeUsdRate(d.unitPrice) : d.unitPrice;
-      const valueIls = computeAssetValueIls(d.kind, d.quantity, unitPrice);
+        d.kind === "USD"
+          ? liveRates!.usdIls
+          : (d.unitPrice ?? 0);
+      if (d.kind === "GOLD" && unitPrice <= 0) {
+        return NextResponse.json({ error: "Gold price required" }, { status: 400 });
+      }
+      const entryValueIls = computeAssetValueIls(
+        d.kind,
+        d.quantity,
+        unitPrice,
+        liveRates?.usdIls
+      );
       const title =
         d.title ||
         (d.kind === "GOLD" ? `ذهب ${d.goldKarat ?? 21}K` : "دولار أمريكي");
@@ -43,23 +52,18 @@ export async function POST(req: Request) {
       });
 
       if (asset) {
-        const oldQty = Number(asset.quantity);
-        const newQty = oldQty + d.quantity;
-        const oldValue = computeAssetValueIls(
+        const newQty = Number(asset.quantity) + d.quantity;
+        const newValue = computeAssetValueIls(
           d.kind,
-          oldQty,
-          Number(asset.unitPrice)
+          newQty,
+          unitPrice,
+          liveRates?.usdIls
         );
-        const newValue = Math.round((oldValue + valueIls) * 100) / 100;
-        const avgRate =
-          d.kind === "USD" && newQty > 0
-            ? Math.round((newValue / newQty) * 10000) / 10000
-            : unitPrice;
         asset = await prisma.savingsAsset.update({
           where: { id: asset.id },
           data: {
             quantity: newQty,
-            unitPrice: avgRate,
+            unitPrice,
             valueIls: newValue,
             ...(d.kind === "GOLD" && d.goldKarat
               ? { goldKarat: d.goldKarat }
@@ -76,7 +80,7 @@ export async function POST(req: Request) {
             unitPrice,
             goldKarat: d.kind === "GOLD" ? (d.goldKarat ?? 21) : null,
             priceCurrency: d.kind === "USD" ? "USD" : "ILS",
-            valueIls,
+            valueIls: entryValueIls,
             notes: d.notes || null,
           },
         });
@@ -87,7 +91,7 @@ export async function POST(req: Request) {
           assetId: asset.id,
           quantity: d.quantity,
           unitPrice,
-          valueIls,
+          valueIls: entryValueIls,
           purchasedAt: new Date(d.purchasedAt),
           notes: d.notes || null,
         },
