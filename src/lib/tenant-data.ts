@@ -1030,12 +1030,17 @@ export async function getSubscriptionsMonthly(
       payments: {
         where: { periodYear: year, periodMonth: month },
       },
+      monthSkips: {
+        where: { periodYear: year, periodMonth: month },
+      },
       category: true,
       paymentMethod: true,
     },
   });
 
-  const items = subscriptions.map((sub) => {
+  const visible = subscriptions.filter((sub) => sub.monthSkips.length === 0);
+
+  const items = visible.map((sub) => {
     const payment = sub.payments[0] ?? null;
     return {
       id: sub.id,
@@ -1045,6 +1050,7 @@ export async function getSubscriptionsMonthly(
       categoryName: sub.category?.name ?? "اشتراكات",
       paymentMethodName: sub.paymentMethod?.name ?? null,
       notes: sub.notes,
+      isDefault: sub.isDefault,
       paid: payment?.paid ?? false,
       paidAt: payment?.paidAt?.toISOString().slice(0, 10) ?? null,
       paymentId: payment?.id ?? null,
@@ -1076,7 +1082,7 @@ export async function getEmployerKupot(userId: string) {
     include: {
       salarySlips: {
         where: { worked: true },
-        orderBy: [{ periodYear: "desc" }, { periodMonth: "desc" }],
+        orderBy: [{ periodYear: "asc" }, { periodMonth: "asc" }],
       },
       savingsPlans: {
         where: { type: "KUPOT", status: "ACTIVE" },
@@ -1094,7 +1100,26 @@ export async function getEmployerKupot(userId: string) {
       (sum, s) => sum + decimalToNumber(s.kerenHishtalmut),
       0
     );
-    const latest = emp.salarySlips[0];
+    const latest = emp.salarySlips[emp.salarySlips.length - 1];
+    const monthlyHistory = emp.salarySlips
+      .filter(
+        (s) =>
+          decimalToNumber(s.pension) > 0 ||
+          decimalToNumber(s.kerenHishtalmut) > 0
+      )
+      .map((s) => {
+        const pension = decimalToNumber(s.pension);
+        const keren = decimalToNumber(s.kerenHishtalmut);
+        return {
+          year: s.periodYear,
+          month: s.periodMonth,
+          label: `${monthLabel(s.periodMonth)} ${s.periodYear}`,
+          pension,
+          keren,
+          total: pension + keren,
+        };
+      });
+
     return {
       id: emp.id,
       name: emp.name,
@@ -1107,6 +1132,7 @@ export async function getEmployerKupot(userId: string) {
         : null,
       latestPension: latest ? decimalToNumber(latest.pension) : 0,
       latestKeren: latest ? decimalToNumber(latest.kerenHishtalmut) : 0,
+      monthlyHistory,
       plans: emp.savingsPlans.map((p) => ({
         id: p.id,
         title: p.title,
@@ -1114,6 +1140,22 @@ export async function getEmployerKupot(userId: string) {
       })),
     };
   });
+}
+
+export async function getKupotPageData(userId: string) {
+  const employers = await getEmployerKupot(userId);
+  const active = employers.filter((e) => e.kupotTotal > 0);
+  const pensionGrand = active.reduce((s, e) => s + e.pensionTotal, 0);
+  const kerenGrand = active.reduce((s, e) => s + e.kerenTotal, 0);
+  return {
+    summary: {
+      pensionTotal: pensionGrand,
+      kerenTotal: kerenGrand,
+      kupotTotal: pensionGrand + kerenGrand,
+      employerCount: active.length,
+    },
+    employers: active,
+  };
 }
 
 export async function getLookups(userId: string) {

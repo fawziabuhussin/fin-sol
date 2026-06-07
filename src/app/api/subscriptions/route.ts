@@ -2,8 +2,8 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/session";
 import { handleApiError } from "@/lib/api-error";
-import { DEFAULT_SUBSCRIPTIONS } from "@/lib/default-subscriptions";
 import { ensureSubscriptionCategoryId } from "@/lib/subscription-category";
+import { seedDefaultSubscriptions } from "@/lib/subscription-seed";
 import { subscriptionSchema } from "@/lib/validations/subscriptions";
 
 export async function GET() {
@@ -29,26 +29,11 @@ export async function POST(req: Request) {
     const body = await req.json();
 
     if (body.action === "seed-defaults") {
-      const count = await prisma.subscription.count({ where: { userId: user.id } });
-      if (count > 0) {
-        return NextResponse.json({ error: "Already has subscriptions" }, { status: 400 });
-      }
-      const categoryId = await ensureSubscriptionCategoryId(user.id);
-      const created = await prisma.$transaction(
-        DEFAULT_SUBSCRIPTIONS.map((sub) =>
-          prisma.subscription.create({
-            data: {
-              userId: user.id,
-              title: sub.title,
-              amount: sub.amount,
-              billingDay: sub.billingDay,
-              categoryId,
-              isActive: true,
-            },
-          })
-        )
-      );
-      return NextResponse.json({ count: created.length }, { status: 201 });
+      const result = await seedDefaultSubscriptions(user.id, prisma, {
+        startYear: body.startYear,
+        paidThroughMonth: body.paidThroughMonth,
+      });
+      return NextResponse.json(result, { status: 201 });
     }
 
     const parsed = subscriptionSchema.safeParse(body);
@@ -69,6 +54,7 @@ export async function POST(req: Request) {
         paymentMethodId: d.paymentMethodId || null,
         notes: d.notes || null,
         isActive: d.isActive ?? true,
+        isDefault: false,
       },
     });
     return NextResponse.json(created, { status: 201 });

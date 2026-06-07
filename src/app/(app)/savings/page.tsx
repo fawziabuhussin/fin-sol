@@ -3,6 +3,7 @@ import { getSavingsSummary, listSavings } from "@/lib/tenant-data";
 import { decimalToNumber } from "@/lib/utils";
 import { SavingsPageClient } from "@/components/pages/savings-page-client";
 import { SavingsSummary } from "@/components/pages/savings-summary";
+import { SavingsTabs } from "@/components/savings/savings-tabs";
 
 export default async function SavingsPage() {
   const user = await requireUser();
@@ -20,7 +21,9 @@ export default async function SavingsPage() {
         </p>
       </div>
 
-      <SavingsSummary data={summary} />
+      <SavingsTabs />
+
+      <SavingsSummary data={summary} showKupotLink />
 
       <SavingsPageClient
         items={items.map((item) => ({

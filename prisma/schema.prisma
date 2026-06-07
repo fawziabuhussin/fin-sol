@@ -210,15 +210,31 @@ model Subscription {
   paymentMethodId   String?
   notes             String?
   isActive          Boolean  @default(true)
+  isDefault         Boolean  @default(false)
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
-  user          User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
-  category      Category?             @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  paymentMethod PaymentMethod?        @relation(fields: [paymentMethodId], references: [id], onDelete: SetNull)
+  user          User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category      Category?                @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  paymentMethod PaymentMethod?           @relation(fields: [paymentMethodId], references: [id], onDelete: SetNull)
   payments      SubscriptionPayment[]
+  monthSkips    SubscriptionMonthSkip[]
 
+  @@unique([userId, title])
   @@index([userId, isActive])
+}
+
+/** Hide a recurring subscription from a single calendar month without deleting it. */
+model SubscriptionMonthSkip {
+  id             String @id @default(cuid())
+  subscriptionId String
+  periodYear     Int
+  periodMonth    Int
+
+  subscription Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  @@unique([subscriptionId, periodYear, periodMonth])
+  @@index([subscriptionId])
 }
 
 model SubscriptionPayment {

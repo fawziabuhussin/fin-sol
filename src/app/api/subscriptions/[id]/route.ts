@@ -48,8 +48,9 @@ export async function PATCH(
   }
 }
 
+/** scope=month hides from one month; default deletes the recurring subscription entirely */
 export async function DELETE(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
@@ -58,6 +59,26 @@ export async function DELETE(
     const sub = await owns(user.id, id);
     if (!sub) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
+
+    const url = new URL(req.url);
+    const scope = url.searchParams.get("scope");
+    const year = Number(url.searchParams.get("year"));
+    const month = Number(url.searchParams.get("month"));
+
+    if (scope === "month" && year && month) {
+      await prisma.subscriptionMonthSkip.upsert({
+        where: {
+          subscriptionId_periodYear_periodMonth: {
+            subscriptionId: id,
+            periodYear: year,
+            periodMonth: month,
+          },
+        },
+        create: { subscriptionId: id, periodYear: year, periodMonth: month },
+        update: {},
+      });
+      return NextResponse.json({ ok: true, scope: "month" });
     }
 
     const payments = await prisma.subscriptionPayment.findMany({
@@ -73,7 +94,7 @@ export async function DELETE(
     }
     await prisma.subscription.delete({ where: { id } });
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, scope: "all" });
   } catch (error) {
     return handleApiError(error);
   }

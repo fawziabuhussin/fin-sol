@@ -32,6 +32,7 @@ type SubscriptionItem = {
   categoryName: string;
   paymentMethodName: string | null;
   notes: string | null;
+  isDefault: boolean;
   paid: boolean;
   paidAt: string | null;
 };
@@ -132,6 +133,7 @@ export function SubscriptionsPageClient({
     paymentMethodId: "",
     notes: "",
   });
+  const [deleteTarget, setDeleteTarget] = useState<SubscriptionItem | null>(null);
 
   const navigateMonth = (delta: number) => {
     let y = data.year;
@@ -154,13 +156,17 @@ export function SubscriptionsPageClient({
       const res = await fetch("/api/subscriptions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "seed-defaults" }),
+        body: JSON.stringify({
+          action: "seed-defaults",
+          startYear: 2026,
+          paidThroughMonth: 5,
+        }),
       });
       if (!res.ok) {
         toast.error("تعذّر الاستيراد");
         return;
       }
-      toast.success("تم استيراد الاشتراكات الافتراضية");
+      toast.success("تم استيراد الاشتراكات — الأشهر 1–5 مدفوعة");
       router.refresh();
     });
   };
@@ -222,15 +228,31 @@ export function SubscriptionsPageClient({
     });
   };
 
-  const deleteSub = (id: string, title: string) => {
-    if (!confirm(`حذف «${title}»؟`)) return;
+  const hideFromMonth = (id: string, title: string) => {
+    startTransition(async () => {
+      const res = await fetch(
+        `/api/subscriptions/${id}?scope=month&year=${data.year}&month=${data.month}`,
+        { method: "DELETE" }
+      );
+      if (!res.ok) {
+        toast.error("فشل الإخفاء");
+        return;
+      }
+      toast.success(`تم إخفاء «${title}» من ${data.monthLabel} فقط`);
+      setDeleteTarget(null);
+      router.refresh();
+    });
+  };
+
+  const deleteEntirely = (id: string, title: string) => {
     startTransition(async () => {
       const res = await fetch(`/api/subscriptions/${id}`, { method: "DELETE" });
       if (!res.ok) {
         toast.error("فشل الحذف");
         return;
       }
-      toast.success("تم الحذف");
+      toast.success(`تم حذف «${title}» من كل الأشهر`);
+      setDeleteTarget(null);
       router.refresh();
     });
   };
@@ -256,11 +278,9 @@ export function SubscriptionsPageClient({
               <Button size="sm" variant="outline" onClick={() => setShowAdd(!showAdd)}>
                 <Plus className="h-4 w-4" /> إضافة
               </Button>
-              {data.totalCount === 0 && (
-                <Button size="sm" variant="outline" onClick={seedDefaults} disabled={isPending}>
-                  <RefreshCw className="h-4 w-4" /> استيراد القائمة
-                </Button>
-              )}
+              <Button size="sm" variant="outline" onClick={seedDefaults} disabled={isPending}>
+                <RefreshCw className="h-4 w-4" /> استيراد / تحديث القائمة
+              </Button>
             </div>
           </div>
           <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -288,7 +308,10 @@ export function SubscriptionsPageClient({
       {showAdd && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">اشتراك جديد</CardTitle>
+            <CardTitle className="text-base">اشتراك متكرر جديد</CardTitle>
+            <p className="text-xs text-slate-500">
+              سيظهر في كل شهر حتى تحذفه — يمكنك إخفاؤه من شهر واحد أو حذفه نهائياً
+            </p>
           </CardHeader>
           <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <div>
@@ -418,6 +441,9 @@ export function SubscriptionsPageClient({
                       <div className="flex flex-wrap items-center gap-2">
                         <p className="font-bold text-slate-900">{item.title}</p>
                         <Badge variant="default">{item.categoryName}</Badge>
+                        {item.isDefault && (
+                          <Badge variant="warning">افتراضي</Badge>
+                        )}
                         {item.paid && <Badge variant="success">مدفوع</Badge>}
                       </div>
                       <p className="mt-0.5 text-xs text-slate-500">
@@ -446,7 +472,7 @@ export function SubscriptionsPageClient({
                         size="icon"
                         variant="ghost"
                         className="h-8 w-8 text-rose-600"
-                        onClick={() => deleteSub(item.id, item.title)}
+                        onClick={() => setDeleteTarget(item)}
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>
@@ -458,6 +484,55 @@ export function SubscriptionsPageClient({
           )}
         </CardContent>
       </Card>
+
+      {/* Delete: this month only vs entire subscription */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <Card className="w-full max-w-md shadow-xl">
+            <CardHeader>
+              <CardTitle className="text-base">حذف «{deleteTarget.title}»</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <p className="text-sm text-slate-600">
+                هذا اشتراك متكرر. ماذا تريد أن تفعل في{" "}
+                <strong>
+                  {data.monthLabel} {data.year}
+                </strong>
+                ؟
+              </p>
+              <Button
+                variant="outline"
+                className="w-full justify-start"
+                disabled={isPending}
+                onClick={() => hideFromMonth(deleteTarget.id, deleteTarget.title)}
+              >
+                إخفاء من هذا الشهر فقط
+                <span className="mr-auto text-xs text-slate-500">
+                  يبقى في الأشهر الأخرى
+                </span>
+              </Button>
+              <Button
+                variant="destructive"
+                className="w-full justify-start bg-rose-600 hover:bg-rose-700"
+                disabled={isPending}
+                onClick={() => deleteEntirely(deleteTarget.id, deleteTarget.title)}
+              >
+                حذف الاشتراك نهائياً
+                <span className="mr-auto text-xs text-rose-100">
+                  من كل الأشهر
+                </span>
+              </Button>
+              <Button
+                variant="ghost"
+                className="w-full"
+                onClick={() => setDeleteTarget(null)}
+              >
+                إلغاء
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      )}
     </div>
   );
 }

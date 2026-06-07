@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState, useTransition } from "react";
 import { motion } from "framer-motion";
@@ -336,9 +337,16 @@ function AssetCard({
   );
 }
 
-export function SavingsSummary({ data }: { data: SavingsSummaryData }) {
+export function SavingsSummary({
+  data,
+  showKupotLink = false,
+}: {
+  data: SavingsSummaryData;
+  showKupotLink?: boolean;
+}) {
   const { summary, charts, assets, kupot } = data;
   const hasChartData = charts.portfolio.length > 0;
+  const kupotWithBalance = kupot.filter((k) => k.kupotTotal > 0);
 
   return (
     <div className="space-y-6">
@@ -407,42 +415,48 @@ export function SavingsSummary({ data }: { data: SavingsSummaryData }) {
         ))}
       </div>
 
-      {/* קופות — pension funds per employer */}
-      {kupot.length > 0 && (
-        <div>
-          <h2 className="mb-3 flex items-center gap-2 text-lg font-bold text-slate-900">
-            <PiggyBank className="h-5 w-5 text-violet-600" />
-            קופות — פנסיה וקרן השתלמות
-          </h2>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {kupot.map((k) => (
-              <Card key={k.id} className="shadow-sm">
-                <CardContent className="p-4">
-                  <p className="font-bold text-slate-900">{k.name}</p>
-                  <p className="mt-2 text-2xl font-extrabold text-violet-700">
-                    {formatCurrency(k.kupotTotal)}
-                  </p>
-                  <div className="mt-2 space-y-1 text-xs text-slate-600">
-                    <p>פנסיה متراكمة: {formatCurrency(k.pensionTotal)}</p>
-                    <p>קרן השתלמות: {formatCurrency(k.kerenTotal)}</p>
-                    {(k.latestPension > 0 || k.latestKeren > 0) && (
-                      <p className="text-slate-500">
-                        آخر شهر: פנסיה {formatCurrency(k.latestPension)} · קרן{" "}
-                        {formatCurrency(k.latestKeren)}
-                      </p>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-          <p className="mt-2 text-center text-sm text-slate-600">
-            إجمالي הקופות:{" "}
-            <span className="font-bold text-violet-700">
-              {formatCurrency(summary.kupotTotal)}
-            </span>
-          </p>
-        </div>
+      {showKupotLink && summary.kupotTotal > 0 && (
+        <Link href="/savings/kupot">
+          <Card className="border-violet-100 bg-gradient-to-l from-violet-50 to-indigo-50 shadow-sm transition hover:shadow-md">
+            <CardContent className="flex flex-wrap items-center justify-between gap-4 p-5">
+              <div>
+                <p className="flex items-center gap-2 text-sm font-semibold text-violet-800">
+                  <PiggyBank className="h-4 w-4" />
+                  קופות — פנסיה וקרן השתלמות
+                </p>
+                <p className="mt-1 text-xs text-slate-600">
+                  {kupotWithBalance.length} جهة عمل · أموال في الصندوق وليست نقداً
+                </p>
+                <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-sm">
+                  <span>
+                    <span className="text-slate-500">פנסיה: </span>
+                    <span className="font-bold text-violet-800">
+                      {formatCurrency(
+                        kupotWithBalance.reduce((s, k) => s + k.pensionTotal, 0)
+                      )}
+                    </span>
+                  </span>
+                  <span>
+                    <span className="text-slate-500">קרן: </span>
+                    <span className="font-bold text-indigo-800">
+                      {formatCurrency(
+                        kupotWithBalance.reduce((s, k) => s + k.kerenTotal, 0)
+                      )}
+                    </span>
+                  </span>
+                </div>
+              </div>
+              <div className="text-left">
+                <p className="text-3xl font-extrabold text-violet-700">
+                  {formatCurrency(summary.kupotTotal)}
+                </p>
+                <p className="mt-1 text-sm font-medium text-violet-600">
+                  عرض التفاصيل ←
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        </Link>
       )}
 
       {/* Gold & Dollar assets */}

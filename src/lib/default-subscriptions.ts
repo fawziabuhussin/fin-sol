@@ -14,3 +14,7 @@ export const DEFAULT_SUBSCRIPTIONS = [
   { title: "Vercel (سنوي)", amount: 122.43, billingDay: 3 },
   { title: "apple sub", amount: 297.26, billingDay: null },
 ] as const;
+
+export const DEFAULT_SUBSCRIPTION_START_YEAR = 2026;
+/** Months 1–5 of start year are marked paid on initial seed. Month 6+ stays unpaid. */
+export const DEFAULT_SUBSCRIPTION_PAID_THROUGH_MONTH = 5;

@@ -1,4 +1,6 @@
+import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/session";
+import { seedDefaultSubscriptions } from "@/lib/subscription-seed";
 import { getLookups, getSubscriptionsMonthly } from "@/lib/tenant-data";
 import { SubscriptionsPageClient } from "@/components/pages/subscriptions-page-client";
 
@@ -12,6 +14,13 @@ export default async function SubscriptionsPage({
   const now = new Date();
   const year = params.year ? Number(params.year) : now.getFullYear();
   const month = params.month ? Number(params.month) : now.getMonth() + 1;
+
+  const subCount = await prisma.subscription.count({
+    where: { userId: user.id },
+  });
+  if (subCount === 0) {
+    await seedDefaultSubscriptions(user.id, prisma);
+  }
 
   const [data, lookups] = await Promise.all([
     getSubscriptionsMonthly(user.id, year, month),
