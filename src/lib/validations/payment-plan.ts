@@ -2,6 +2,7 @@ import { z } from "zod";
 
 export const paymentPlanSchema = z
   .object({
+    title: z.string().max(120).optional().or(z.literal("")),
     mode: z.enum(["FULL", "INSTALLMENTS"]),
     totalAmount: z.coerce.number().positive(),
     installmentCount: z.coerce.number().int().min(2).optional(),
@@ -48,6 +49,7 @@ export const installmentCreateSchema = z.object({
 });
 
 export const planEditSchema = z.object({
+  title: z.string().max(120).optional().or(z.literal("")),
   payeeName: z.string().max(120).optional().or(z.literal("")),
   paymentMethodId: z.string().optional().or(z.literal("")),
   startDate: z.string().optional(),

@@ -11,6 +11,7 @@ import {
   PiggyBank,
   Save,
   Users,
+  Wallet,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -38,7 +39,7 @@ type ScheduleRow = {
 type SavingsDetail = {
   id: string;
   title: string;
-  type: "JAMIYA" | "PERSONAL";
+  type: "JAMIYA" | "PERSONAL" | "KUPOT";
   status: string;
   monthlyContribution: number;
   targetAmount: number | null;
@@ -141,7 +142,8 @@ export function SavingsDetailClient({ detail }: { detail: SavingsDetail }) {
   };
 
   const isJamiya = detail.type === "JAMIYA";
-  const TypeIcon = isJamiya ? Users : PiggyBank;
+  const isKupot = detail.type === "KUPOT";
+  const TypeIcon = isJamiya ? Users : isKupot ? Wallet : PiggyBank;
 
   return (
     <div className="space-y-4 pb-4 sm:space-y-6">
@@ -161,7 +163,7 @@ export function SavingsDetailClient({ detail }: { detail: SavingsDetail }) {
       >
         <div className="flex items-center gap-2 text-sm text-violet-100">
           <TypeIcon className="h-4 w-4" />
-          {isJamiya ? "جمعية" : "ادخار شخصي"}
+          {isJamiya ? "جمعية" : isKupot ? "קופות" : "ادخار شخصي"}
         </div>
         <h1 className="mt-1 text-2xl font-extrabold sm:text-3xl">{detail.title}</h1>
         <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -238,6 +240,7 @@ export function SavingsDetailClient({ detail }: { detail: SavingsDetail }) {
                 >
                   <option value="JAMIYA">جمعية</option>
                   <option value="PERSONAL">ادخار شخصي</option>
+                  <option value="KUPOT">קופות</option>
                 </Select>
               </div>
               <div>

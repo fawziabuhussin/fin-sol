@@ -62,6 +62,7 @@ export async function PATCH(
       const updatedPlan = await tx.projectPaymentPlan.update({
         where: { id: planId },
         data: {
+          ...(d.title !== undefined ? { title: d.title || null } : {}),
           ...(d.payeeName !== undefined ? { payeeName: d.payeeName || null } : {}),
           ...(d.paymentMethodId !== undefined
             ? { paymentMethodId: d.paymentMethodId || null }

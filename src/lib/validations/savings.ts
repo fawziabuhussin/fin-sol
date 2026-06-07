@@ -2,7 +2,8 @@ import { z } from "zod";
 
 export const savingsSchema = z.object({
   title: z.string().min(1).max(120),
-  type: z.enum(["JAMIYA", "PERSONAL"]),
+  type: z.enum(["JAMIYA", "PERSONAL", "KUPOT"]),
+  employerId: z.string().optional().or(z.literal("")),
   monthlyContribution: z.coerce.number().min(0),
   targetAmount: z.coerce.number().min(0).optional(),
   payoutDate: z.string().optional().or(z.literal("")),
@@ -50,3 +51,13 @@ export const savingsAssetSchema = z.object({
 export const savingsAssetPatchSchema = savingsAssetSchema.partial();
 
 export type SavingsAssetInput = z.infer<typeof savingsAssetSchema>;
+
+export const savingsAssetPurchaseSchema = z.object({
+  kind: z.enum(["GOLD", "USD"]),
+  quantity: z.coerce.number().positive(),
+  unitPrice: z.coerce.number().min(0),
+  goldKarat: z.coerce.number().int().min(14).max(24).optional(),
+  purchasedAt: z.string().min(1),
+  notes: z.string().max(300).optional().or(z.literal("")),
+  title: z.string().max(120).optional().or(z.literal("")),
+});

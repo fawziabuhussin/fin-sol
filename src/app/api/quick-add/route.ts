@@ -3,10 +3,12 @@ import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/session";
 import { transactionSchema } from "@/lib/validations/transactions";
 import { projectSchema } from "@/lib/validations/projects";
+import { savingsAssetPurchaseSchema } from "@/lib/validations/savings";
 
 const quickAddSchema = {
   TRANSACTION: transactionSchema,
   PROJECT: projectSchema,
+  SAVINGS_ASSET: savingsAssetPurchaseSchema,
 } as const;
 
 export async function POST(req: Request) {
@@ -16,6 +18,66 @@ export async function POST(req: Request) {
 
     if (!body.kind || !(body.kind in quickAddSchema)) {
       return NextResponse.json({ error: "Invalid kind" }, { status: 400 });
+    }
+
+    if (body.kind === "SAVINGS_ASSET") {
+      const parsed = quickAddSchema.SAVINGS_ASSET.safeParse(body.payload);
+      if (!parsed.success) {
+        return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+      }
+      const d = parsed.data;
+      const valueIls = Math.round(d.quantity * d.unitPrice * 100) / 100;
+      const title =
+        d.title ||
+        (d.kind === "GOLD" ? `ذهب ${d.goldKarat ?? 21}K` : "دولار أمريكي");
+
+      let asset = await prisma.savingsAsset.findFirst({
+        where: { userId: user.id, kind: d.kind },
+        orderBy: { createdAt: "asc" },
+      });
+
+      if (asset) {
+        const newQty = Number(asset.quantity) + d.quantity;
+        const newValue = Math.round(newQty * d.unitPrice * 100) / 100;
+        asset = await prisma.savingsAsset.update({
+          where: { id: asset.id },
+          data: {
+            quantity: newQty,
+            unitPrice: d.unitPrice,
+            valueIls: newValue,
+            ...(d.kind === "GOLD" && d.goldKarat
+              ? { goldKarat: d.goldKarat }
+              : {}),
+          },
+        });
+      } else {
+        asset = await prisma.savingsAsset.create({
+          data: {
+            userId: user.id,
+            kind: d.kind,
+            title,
+            quantity: d.quantity,
+            unitPrice: d.unitPrice,
+            goldKarat: d.kind === "GOLD" ? (d.goldKarat ?? 21) : null,
+            priceCurrency: d.kind === "USD" ? "USD" : "ILS",
+            valueIls,
+            notes: d.notes || null,
+          },
+        });
+      }
+
+      const entry = await prisma.savingsAssetEntry.create({
+        data: {
+          assetId: asset.id,
+          quantity: d.quantity,
+          unitPrice: d.unitPrice,
+          valueIls,
+          purchasedAt: new Date(d.purchasedAt),
+          notes: d.notes || null,
+        },
+      });
+
+      return NextResponse.json({ asset, entry }, { status: 201 });
     }
 
     if (body.kind === "TRANSACTION") {

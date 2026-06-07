@@ -17,7 +17,6 @@ import {
   sumPaidInstallments,
 } from "@/lib/installment-transactions";
 import { contractorBudgetTotal } from "@/lib/project-completion-utils";
-import { dedupePlanBuildingExpensesForUser } from "@/lib/plan-expense-dedupe";
 import {
   CategoryKind,
   InstallmentStatus,
@@ -26,6 +25,97 @@ import {
 } from "@/generated/prisma/client";
 
 const BUILD_CATEGORY = "بناء";
+
+const INCOME_PALETTE = [
+  "#059669",
+  "#10b981",
+  "#14b8a6",
+  "#6366f1",
+  "#8b5cf6",
+  "#f59e0b",
+  "#ec4899",
+];
+
+type IncomeSourceRow = {
+  id: string;
+  name: string;
+  color: string;
+  isSalary: boolean;
+  amount: number;
+};
+
+function slugifyIncomeId(name: string) {
+  return name.trim().toLowerCase().replace(/\s+/g, "-");
+}
+
+function incomeSourceMeta(name: string, colorIndex: number) {
+  const known = INCOME_SOURCES.find((s) => s.name === name);
+  return {
+    id: known?.id ?? slugifyIncomeId(name),
+    color: known?.color ?? INCOME_PALETTE[colorIndex % INCOME_PALETTE.length],
+    isSalary: known ? "isSalary" in known && !!known.isSalary : false,
+  };
+}
+
+function buildIncomeSources(
+  transactions: Array<{
+    type: TransactionType;
+    amount: { toString(): string } | null;
+    salarySlipId: string | null;
+    description: string | null;
+    payee: { name: string } | null;
+  }>,
+  salarySlips: Array<{
+    paid: boolean;
+    worked: boolean;
+    net: { toString(): string } | null;
+    employer: { name: string; color: string | null };
+  }>
+): IncomeSourceRow[] {
+  const rows = new Map<string, IncomeSourceRow>();
+
+  const txByName = new Map<string, { linked: number; unlinked: number }>();
+  for (const t of transactions) {
+    if (t.type !== TransactionType.INCOME || isSavingsRelatedIncome(t)) continue;
+    const name = t.payee?.name ?? t.description?.trim() ?? "غير مصنّف";
+    const amt = decimalToNumber(t.amount);
+    const group = txByName.get(name) ?? { linked: 0, unlinked: 0 };
+    if (t.salarySlipId) group.linked += amt;
+    else group.unlinked += amt;
+    txByName.set(name, group);
+  }
+
+  for (const [name, group] of txByName) {
+    const meta = incomeSourceMeta(name, rows.size);
+    rows.set(name, {
+      id: meta.id,
+      name,
+      color: meta.color,
+      isSalary: meta.isSalary || group.linked > 0,
+      amount: group.linked > 0 ? group.linked : group.unlinked,
+    });
+  }
+
+  for (const slip of salarySlips) {
+    if (!slip.paid || !slip.worked) continue;
+    const name = slip.employer.name;
+    const existing = rows.get(name);
+    if (existing && existing.amount > 0) continue;
+
+    const meta = incomeSourceMeta(name, rows.size);
+    rows.set(name, {
+      id: meta.id,
+      name,
+      color: slip.employer.color ?? meta.color,
+      isSalary: true,
+      amount: decimalToNumber(slip.net),
+    });
+  }
+
+  return [...rows.values()]
+    .filter((s) => s.amount > 0)
+    .sort((a, b) => b.amount - a.amount);
+}
 
 export async function getMonthsWithData(userId: string, year: number) {
   const { start, end } = yearRangeUTC(year);
@@ -159,35 +249,16 @@ export async function getMonthlyOverview(
       }),
     ]);
 
-  const incomeSources = INCOME_SOURCES.map((source) => {
-    const matching = transactions.filter(
-      (t) =>
-        t.type === TransactionType.INCOME &&
-        !isSavingsRelatedIncome(t) &&
-        (t.payee?.name === source.name || t.description === source.name)
-    );
-    const linked = matching.filter((t) => t.salarySlipId);
-    const toSum = linked.length > 0 ? linked : matching;
-    const amount = toSum.reduce((sum, t) => sum + decimalToNumber(t.amount), 0);
-    return {
-      id: source.id,
-      name: source.name,
-      color: source.color,
-      isSalary: "isSalary" in source ? source.isSalary : false,
-      amount,
-    };
-  });
+  const incomeSources = buildIncomeSources(transactions, salarySlips);
 
   const savingsIncomeExcluded = transactions
     .filter((t) => t.type === TransactionType.INCOME && isSavingsRelatedIncome(t))
     .reduce((sum, t) => sum + decimalToNumber(t.amount), 0);
 
   const totalIncome = incomeSources.reduce((sum, s) => sum + s.amount, 0);
-  const salaryFromSlips = salarySlips
-    .filter((s) => s.paid && s.worked)
-    .reduce((sum, s) => sum + decimalToNumber(s.net), 0);
-  const salaryAmount =
-    incomeSources.find((s) => s.isSalary)?.amount || salaryFromSlips;
+  const salaryAmount = incomeSources
+    .filter((s) => s.isSalary)
+    .reduce((sum, s) => sum + s.amount, 0);
 
   const [dailyExpenses, buildExpenses, savingsContributions] =
     await Promise.all([
@@ -222,15 +293,22 @@ export async function getMonthlyOverview(
     .reduce((sum, plan) => sum + decimalToNumber(plan.monthlyContribution), 0);
   const savingsContributionsActual =
     savingsFromEntries > 0 ? savingsFromEntries : savingsContributions;
-  const savingsTotal = savingsContributionsActual + savingsPlanned;
+  const savingsPaidThisMonth = savingsContributionsActual;
+  const savingsTotal = savingsPaidThisMonth + savingsPlanned;
+
+  const displayIncome = Math.max(0, totalIncome - savingsPaidThisMonth);
 
   const undertracked = isUndertrackedExpenseMonth(year, month);
   const expenseAdjust = undertracked
-    ? adjustUndertrackedExpenses(totalIncome, totalExpenses)
-    : { expenses: totalExpenses, net: totalIncome - totalExpenses, adjusted: false };
+    ? adjustUndertrackedExpenses(displayIncome, totalExpenses)
+    : {
+        expenses: totalExpenses,
+        net: displayIncome - totalExpenses,
+        adjusted: false,
+      };
 
   const net = expenseAdjust.net;
-  const netAfterSavings = net - savingsTotal;
+  const netAfterSavings = net - savingsPlanned;
   const hasIncomeNoExpenses = totalIncome > 0 && totalExpenses === 0;
 
   const primarySlip = salarySlips[0];
@@ -242,9 +320,11 @@ export async function getMonthlyOverview(
     hasIncomeNoExpenses,
     income: {
       sources: incomeSources,
-      total: totalIncome,
+      total: displayIncome,
+      grossTotal: totalIncome,
       salary: salaryAmount,
       savingsExcluded: savingsIncomeExcluded,
+      savingsDeducted: savingsPaidThisMonth,
     },
     expenses: {
       daily: dailyExpenses,
@@ -255,7 +335,8 @@ export async function getMonthlyOverview(
       byCategory: expenseByCategory,
     },
     savings: {
-      contributions: savingsContributionsActual,
+      contributions: savingsPaidThisMonth,
+      paid: savingsPaidThisMonth,
       planned: savingsPlanned,
       total: savingsTotal,
       plans: savingsPlans.map((plan) => ({
@@ -500,19 +581,18 @@ export async function getAnnualShowcaseData(userId: string, year: number) {
     })),
   });
 
-  const incomeBySource = INCOME_SOURCES.map((src) => {
-    const amount = months.reduce((sum, m) => {
-      const s = m.income.sources.find((x) => x.id === src.id);
-      return sum + (s?.amount ?? 0);
-    }, 0);
-    return {
-      id: src.id,
-      name: src.name,
-      color: src.color,
-      isSalary: "isSalary" in src ? src.isSalary : false,
-      amount,
-    };
-  })
+  const incomeSourceMap = new Map<string, IncomeSourceRow>();
+  for (const m of months) {
+    for (const s of m.income.sources) {
+      const existing = incomeSourceMap.get(s.id);
+      if (existing) {
+        existing.amount += s.amount;
+      } else {
+        incomeSourceMap.set(s.id, { ...s });
+      }
+    }
+  }
+  const incomeBySource = [...incomeSourceMap.values()]
     .filter((s) => s.amount > 0)
     .sort((a, b) => b.amount - a.amount);
 
@@ -823,54 +903,79 @@ export async function getProjectDetail(userId: string, projectId: string) {
 
   if (!project) return null;
 
-  const dedupe = await dedupePlanBuildingExpensesForUser(userId, prisma, {
-    projectId,
-  });
-  if (dedupe.deleted > 0) {
-    return getProjectDetail(userId, projectId);
+  for (const plan of project.paymentPlans) {
+    if (
+      plan.installments.some(
+        (i) => i.status === InstallmentStatus.PAID && !i.transactionId
+      )
+    ) {
+      await repairPaidInstallmentTransactions(userId, {
+        id: plan.id,
+        projectId: plan.projectId,
+        payeeName: plan.payeeName,
+        paymentMethodId: plan.paymentMethodId,
+        project: { title: project.title },
+        installments: plan.installments,
+      });
+    }
   }
 
-  const activePlan = project.paymentPlans[0] ?? null;
-
-  if (
-    activePlan?.installments.some(
-      (i) => i.status === InstallmentStatus.PAID && !i.transactionId
-    )
-  ) {
-    await repairPaidInstallmentTransactions(userId, {
-      id: activePlan.id,
-      projectId: activePlan.projectId,
-      payeeName: activePlan.payeeName,
-      paymentMethodId: activePlan.paymentMethodId,
-      project: { title: project.title },
-      installments: activePlan.installments,
-    });
-    return getProjectDetail(userId, projectId);
-  }
-
-  const totalBudget = decimalToNumber(project.totalBudget);
-  const paid =
-    activePlan && activePlan.installments.length > 0
-      ? sumPaidInstallments(activePlan.installments)
-      : project.transactions.reduce(
-          (sum, t) => sum + decimalToNumber(t.amount),
-          0
-        );
-
-  const installments = (activePlan?.installments ?? []).map((inst) => ({
-    id: inst.id,
-    planId: activePlan!.id,
-    sequence: inst.sequence,
-    label: inst.label ?? `الدفعة ${inst.sequence}`,
-    dueDate: inst.dueDate.toISOString().slice(0, 10),
-    amount: decimalToNumber(inst.amount),
-    status: inst.status,
-    notes: inst.notes,
-    payeeName: activePlan!.payeeName ?? null,
-    paymentMethod: activePlan!.paymentMethod?.name ?? null,
-    paidAt: inst.transaction?.occurredAt.toISOString().slice(0, 10) ?? null,
-    transactionId: inst.transactionId,
+  const plansWithInstallments = project.paymentPlans.map((plan) => ({
+    id: plan.id,
+    title: plan.title ?? null,
+    mode: plan.mode,
+    totalAmount: decimalToNumber(plan.totalAmount),
+    installmentCount: plan.installmentCount,
+    firstPaymentAmount: plan.firstPaymentAmount
+      ? decimalToNumber(plan.firstPaymentAmount)
+      : null,
+    recurringAmount: plan.recurringAmount
+      ? decimalToNumber(plan.recurringAmount)
+      : null,
+    payeeName: plan.payeeName ?? null,
+    startDate: plan.startDate?.toISOString().slice(0, 10) ?? null,
+    paymentMethod: plan.paymentMethod?.name ?? null,
+    paymentMethodId: plan.paymentMethodId ?? null,
+    installments: plan.installments.map((inst) => ({
+      id: inst.id,
+      planId: plan.id,
+      sequence: inst.sequence,
+      label: inst.label ?? `الدفعة ${inst.sequence}`,
+      dueDate: inst.dueDate.toISOString().slice(0, 10),
+      amount: decimalToNumber(inst.amount),
+      status: inst.status,
+      notes: inst.notes,
+      payeeName: plan.payeeName ?? null,
+      paymentMethod: plan.paymentMethod?.name ?? null,
+      paidAt: inst.transaction?.occurredAt.toISOString().slice(0, 10) ?? null,
+      transactionId: inst.transactionId,
+    })),
   }));
+
+  const allInstallments = plansWithInstallments.flatMap((p) => p.installments);
+  const hasPlanInstallments = allInstallments.length > 0;
+
+  const planBudgetTotal = plansWithInstallments.reduce(
+    (sum, p) => sum + p.totalAmount,
+    0
+  );
+  const totalBudget =
+    planBudgetTotal > 0
+      ? planBudgetTotal
+      : decimalToNumber(project.totalBudget);
+
+  const paidFromPlans = project.paymentPlans.reduce(
+    (sum, plan) => sum + sumPaidInstallments(plan.installments),
+    0
+  );
+  const paid = hasPlanInstallments
+    ? paidFromPlans
+    : project.transactions.reduce(
+        (sum, t) => sum + decimalToNumber(t.amount),
+        0
+      );
+
+  const installments = allInstallments;
 
   return {
     id: project.id,
@@ -889,9 +994,11 @@ export async function getProjectDetail(userId: string, projectId: string) {
     installments,
     transactions: (() => {
       const txToInstallment = new Map<string, string>();
-      for (const inst of activePlan?.installments ?? []) {
-        if (inst.transactionId) {
-          txToInstallment.set(inst.transactionId, inst.id);
+      for (const plan of project.paymentPlans) {
+        for (const inst of plan.installments) {
+          if (inst.transactionId) {
+            txToInstallment.set(inst.transactionId, inst.id);
+          }
         }
       }
       return project.transactions.map((tx) => ({
@@ -904,23 +1011,109 @@ export async function getProjectDetail(userId: string, projectId: string) {
         installmentId: txToInstallment.get(tx.id) ?? null,
       }));
     })(),
-    paymentPlans: project.paymentPlans.map((plan) => ({
-      id: plan.id,
-      mode: plan.mode,
-      totalAmount: decimalToNumber(plan.totalAmount),
-      installmentCount: plan.installmentCount,
-      firstPaymentAmount: plan.firstPaymentAmount
-        ? decimalToNumber(plan.firstPaymentAmount)
-        : null,
-      recurringAmount: plan.recurringAmount
-        ? decimalToNumber(plan.recurringAmount)
-        : null,
-      payeeName: plan.payeeName ?? null,
-      startDate: plan.startDate?.toISOString().slice(0, 10) ?? null,
-      paymentMethod: plan.paymentMethod?.name ?? null,
-      paymentMethodId: plan.paymentMethodId ?? null,
-    })),
+    paymentPlans: plansWithInstallments.map(
+      ({ installments: _i, ...plan }) => plan
+    ),
+    plans: plansWithInstallments,
   };
+}
+
+export async function getSubscriptionsMonthly(
+  userId: string,
+  year: number,
+  month: number
+) {
+  const subscriptions = await prisma.subscription.findMany({
+    where: { userId, isActive: true },
+    orderBy: { title: "asc" },
+    include: {
+      payments: {
+        where: { periodYear: year, periodMonth: month },
+      },
+      category: true,
+      paymentMethod: true,
+    },
+  });
+
+  const items = subscriptions.map((sub) => {
+    const payment = sub.payments[0] ?? null;
+    return {
+      id: sub.id,
+      title: sub.title,
+      amount: decimalToNumber(sub.amount),
+      billingDay: sub.billingDay,
+      categoryName: sub.category?.name ?? "اشتراكات",
+      paymentMethodName: sub.paymentMethod?.name ?? null,
+      notes: sub.notes,
+      paid: payment?.paid ?? false,
+      paidAt: payment?.paidAt?.toISOString().slice(0, 10) ?? null,
+      paymentId: payment?.id ?? null,
+      transactionId: payment?.transactionId ?? null,
+    };
+  });
+
+  const totalDue = items.reduce((sum, i) => sum + i.amount, 0);
+  const totalPaid = items
+    .filter((i) => i.paid)
+    .reduce((sum, i) => sum + i.amount, 0);
+
+  return {
+    year,
+    month,
+    monthLabel: monthLabel(month),
+    items,
+    totalDue,
+    totalPaid,
+    totalRemaining: totalDue - totalPaid,
+    paidCount: items.filter((i) => i.paid).length,
+    totalCount: items.length,
+  };
+}
+
+export async function getEmployerKupot(userId: string) {
+  const employers = await prisma.employer.findMany({
+    where: { userId, active: true },
+    include: {
+      salarySlips: {
+        where: { worked: true },
+        orderBy: [{ periodYear: "desc" }, { periodMonth: "desc" }],
+      },
+      savingsPlans: {
+        where: { type: "KUPOT", status: "ACTIVE" },
+      },
+    },
+    orderBy: { name: "asc" },
+  });
+
+  return employers.map((emp) => {
+    const pensionTotal = emp.salarySlips.reduce(
+      (sum, s) => sum + decimalToNumber(s.pension),
+      0
+    );
+    const kerenTotal = emp.salarySlips.reduce(
+      (sum, s) => sum + decimalToNumber(s.kerenHishtalmut),
+      0
+    );
+    const latest = emp.salarySlips[0];
+    return {
+      id: emp.id,
+      name: emp.name,
+      color: emp.color,
+      pensionTotal,
+      kerenTotal,
+      kupotTotal: pensionTotal + kerenTotal,
+      latestMonth: latest
+        ? { year: latest.periodYear, month: latest.periodMonth }
+        : null,
+      latestPension: latest ? decimalToNumber(latest.pension) : 0,
+      latestKeren: latest ? decimalToNumber(latest.kerenHishtalmut) : 0,
+      plans: emp.savingsPlans.map((p) => ({
+        id: p.id,
+        title: p.title,
+        monthlyContribution: decimalToNumber(p.monthlyContribution),
+      })),
+    };
+  });
 }
 
 export async function getLookups(userId: string) {
@@ -1236,7 +1429,7 @@ export async function listSavings(userId: string) {
 }
 
 export async function getSavingsSummary(userId: string) {
-  const [plans, assets] = await Promise.all([
+  const [plans, assets, kupot] = await Promise.all([
     prisma.savingsPlan.findMany({
       where: { userId },
       include: { entries: true },
@@ -1244,8 +1437,12 @@ export async function getSavingsSummary(userId: string) {
     }),
     prisma.savingsAsset.findMany({
       where: { userId },
+      include: {
+        entries: { orderBy: { purchasedAt: "desc" } },
+      },
       orderBy: [{ kind: "asc" }, { createdAt: "asc" }],
     }),
+    getEmployerKupot(userId),
   ]);
 
   let jamiyaPaidTotal = 0;
@@ -1293,7 +1490,17 @@ export async function getSavingsSummary(userId: string) {
     priceCurrency: asset.priceCurrency,
     valueIls: decimalToNumber(asset.valueIls),
     updatedAt: asset.updatedAt.toISOString().slice(0, 10),
+    history: asset.entries.map((e) => ({
+      id: e.id,
+      quantity: decimalToNumber(e.quantity),
+      unitPrice: decimalToNumber(e.unitPrice),
+      valueIls: decimalToNumber(e.valueIls),
+      purchasedAt: e.purchasedAt.toISOString().slice(0, 10),
+      notes: e.notes,
+    })),
   }));
+
+  const kupotTotal = kupot.reduce((sum, k) => sum + k.kupotTotal, 0);
 
   const goldTotal = assetItems
     .filter((a) => a.kind === "GOLD")
@@ -1302,7 +1509,7 @@ export async function getSavingsSummary(userId: string) {
     .filter((a) => a.kind === "USD")
     .reduce((sum, a) => sum + a.valueIls, 0);
   const assetsTotal = goldTotal + usdTotal;
-  const accumulatedTotal = jamiyaPaidTotal + assetsTotal;
+  const accumulatedTotal = jamiyaPaidTotal + assetsTotal + kupotTotal;
   const remainingToPay = Math.max(0, committedTotal - jamiyaPaidTotal);
 
   const portfolioChart = [
@@ -1333,9 +1540,11 @@ export async function getSavingsSummary(userId: string) {
       assetsTotal,
       goldTotal,
       usdTotal,
+      kupotTotal,
     },
     planProgress,
     assets: assetItems,
+    kupot,
     charts: {
       portfolio: portfolioChart,
       commitment: commitmentChart,

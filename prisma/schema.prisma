@@ -30,6 +30,7 @@ model User {
   payees          Payee[]
   paymentMethods  PaymentMethod[]
   paymentPlans    ProjectPaymentPlan[]
+  subscriptions   Subscription[]
 }
 
 model Account {
@@ -140,7 +141,9 @@ model Transaction {
   payee          Payee?               @relation(fields: [payeeId], references: [id], onDelete: SetNull)
   paymentMethod  PaymentMethod?       @relation(fields: [paymentMethodId], references: [id], onDelete: SetNull)
   salarySlip     SalarySlip?          @relation(fields: [salarySlipId], references: [id], onDelete: Cascade)
-  installment    ProjectInstallment?
+  installment           ProjectInstallment?
+  savingsEntry          SavingsEntry?
+  subscriptionPayment   SubscriptionPayment?
 
   @@index([userId, occurredAt])
   @@index([userId, type, occurredAt])
@@ -164,7 +167,8 @@ model Category {
   sortOrder Int          @default(0)
 
   user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  transactions Transaction[]
+  transactions  Transaction[]
+  subscriptions Subscription[]
 
   @@unique([userId, name, kind])
   @@index([userId, kind, isActive])
@@ -189,15 +193,57 @@ model PaymentMethod {
   isActive Boolean @default(true)
 
   user         User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
-  transactions Transaction[]
-  paymentPlans ProjectPaymentPlan[]
+  transactions  Transaction[]
+  paymentPlans  ProjectPaymentPlan[]
+  subscriptions Subscription[]
 
   @@unique([userId, name])
+}
+
+model Subscription {
+  id                String   @id @default(cuid())
+  userId            String
+  title             String
+  amount            Decimal  @db.Decimal(14, 2)
+  billingDay        Int?
+  categoryId        String?
+  paymentMethodId   String?
+  notes             String?
+  isActive          Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  user          User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category      Category?             @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  paymentMethod PaymentMethod?        @relation(fields: [paymentMethodId], references: [id], onDelete: SetNull)
+  payments      SubscriptionPayment[]
+
+  @@index([userId, isActive])
+}
+
+model SubscriptionPayment {
+  id             String    @id @default(cuid())
+  subscriptionId String
+  periodYear     Int
+  periodMonth    Int
+  amount         Decimal   @db.Decimal(14, 2)
+  paid           Boolean   @default(false)
+  paidAt         DateTime? @db.Date
+  transactionId  String?   @unique
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  subscription Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  transaction  Transaction? @relation(fields: [transactionId], references: [id], onDelete: SetNull)
+
+  @@unique([subscriptionId, periodYear, periodMonth])
+  @@index([subscriptionId, paid])
 }
 
 enum SavingsPlanType {
   JAMIYA
   PERSONAL
+  KUPOT
 }
 
 enum SavingsPlanStatus {
@@ -210,6 +256,7 @@ enum SavingsPlanStatus {
 model SavingsPlan {
   id                  String            @id @default(cuid())
   userId              String
+  employerId          String?
   title               String
   type                SavingsPlanType   @default(JAMIYA)
   monthlyContribution Decimal           @db.Decimal(14, 2)
@@ -222,27 +269,31 @@ model SavingsPlan {
   createdAt           DateTime          @default(now())
   updatedAt           DateTime          @updatedAt
 
-  user    User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  entries SavingsEntry[]
+  user     User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  employer Employer?      @relation(fields: [employerId], references: [id], onDelete: SetNull)
+  entries  SavingsEntry[]
 
   @@index([userId, status])
   @@index([userId, payoutDate])
+  @@index([userId, employerId])
 }
 
 model SavingsEntry {
-  id          String   @id @default(cuid())
-  planId      String
-  periodYear  Int
-  periodMonth Int
-  amount      Decimal  @db.Decimal(14, 2)
-  paid        Boolean  @default(false)
-  paidAt      DateTime? @db.Date
-  isPayout    Boolean  @default(false)
-  notes       String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id            String    @id @default(cuid())
+  planId        String
+  periodYear    Int
+  periodMonth   Int
+  amount        Decimal   @db.Decimal(14, 2)
+  paid          Boolean   @default(false)
+  paidAt        DateTime? @db.Date
+  isPayout      Boolean   @default(false)
+  notes         String?
+  transactionId String?   @unique
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
-  plan SavingsPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  plan        SavingsPlan  @relation(fields: [planId], references: [id], onDelete: Cascade)
+  transaction Transaction? @relation(fields: [transactionId], references: [id], onDelete: SetNull)
 
   @@unique([planId, periodYear, periodMonth])
   @@index([planId, paid])
@@ -267,9 +318,25 @@ model SavingsAsset {
   updatedAt     DateTime         @default(now()) @updatedAt
   createdAt     DateTime         @default(now())
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user    User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  entries SavingsAssetEntry[]
 
   @@index([userId, kind])
+}
+
+model SavingsAssetEntry {
+  id          String   @id @default(cuid())
+  assetId     String
+  quantity    Decimal  @db.Decimal(14, 4)
+  unitPrice   Decimal  @db.Decimal(14, 4)
+  valueIls    Decimal  @db.Decimal(14, 2)
+  purchasedAt DateTime @db.Date
+  notes       String?
+  createdAt   DateTime @default(now())
+
+  asset SavingsAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@index([assetId, purchasedAt])
 }
 
 model Employer {
@@ -290,8 +357,9 @@ model Employer {
   startDate   DateTime? @db.Date
   active      Boolean @default(true)
 
-  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  salarySlips SalarySlip[]
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  salarySlips  SalarySlip[]
+  savingsPlans SavingsPlan[]
 
   @@unique([userId, name])
   @@index([userId])
@@ -343,6 +411,7 @@ model ProjectPaymentPlan {
   id                 String          @id @default(cuid())
   userId             String
   projectId          String
+  title              String?
   mode               PaymentPlanMode
   totalAmount        Decimal         @db.Decimal(14, 2)
   installmentCount   Int?

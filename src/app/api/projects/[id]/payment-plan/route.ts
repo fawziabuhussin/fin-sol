@@ -55,6 +55,7 @@ export async function POST(
       data: {
         userId: user.id,
         projectId,
+        title: data.title || null,
         mode: data.mode as PaymentPlanMode,
         totalAmount: data.totalAmount,
         installmentCount: data.installmentCount ?? null,

@@ -94,8 +94,8 @@ const SOURCE_ICONS: Record<string, typeof Briefcase> = {
   salary: Wallet,
 };
 
-function IncomeIcon({ id }: { id: string }) {
-  const Icon = SOURCE_ICONS[id] ?? TrendingUp;
+function IncomeIcon({ id, isSalary }: { id: string; isSalary?: boolean }) {
+  const Icon = isSalary ? Wallet : SOURCE_ICONS[id] ?? TrendingUp;
   return (
     <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/80 shadow-sm ring-1 ring-emerald-100">
       <Icon className="h-5 w-5 text-emerald-700" />
@@ -247,7 +247,7 @@ export function MonthlyDashboard({
           </div>
           <div className="grid grid-cols-2 gap-3 sm:gap-4">
             <div className="rounded-2xl bg-white/15 px-4 py-3 backdrop-blur-sm">
-              <p className="text-xs text-blue-100">الراتب (جامعة شغل)</p>
+              <p className="text-xs text-blue-100">الراتب</p>
               <p className="text-lg font-bold">
                 {formatCurrency(overview.income.salary)}
               </p>
@@ -269,6 +269,11 @@ export function MonthlyDashboard({
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3 p-4 sm:p-6">
+            {overview.income.sources.length === 0 && (
+              <p className="rounded-2xl border border-dashed border-emerald-200 bg-emerald-50/40 px-4 py-6 text-center text-sm text-slate-500">
+                لا توجد مصادر دخل مسجّلة لهذا الشهر.
+              </p>
+            )}
             {overview.income.sources.map((source) => (
               <div
                 key={source.id}
@@ -280,7 +285,7 @@ export function MonthlyDashboard({
                 )}
               >
                 <div className="flex min-w-0 items-center gap-3">
-                  <IncomeIcon id={source.id} />
+                  <IncomeIcon id={source.id} isSalary={source.isSalary} />
                   <div className="min-w-0">
                     <p className="truncate font-bold text-slate-900">
                       {source.name}

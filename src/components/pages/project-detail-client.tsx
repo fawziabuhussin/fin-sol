@@ -70,6 +70,7 @@ type ProjectDetail = {
   }[];
   paymentPlans: {
     id: string;
+    title: string | null;
     mode: string;
     totalAmount: number;
     installmentCount: number | null;
@@ -79,6 +80,20 @@ type ProjectDetail = {
     startDate: string | null;
     paymentMethod: string | null;
     paymentMethodId: string | null;
+  }[];
+  plans: {
+    id: string;
+    title: string | null;
+    mode: string;
+    totalAmount: number;
+    installmentCount: number | null;
+    firstPaymentAmount: number | null;
+    recurringAmount: number | null;
+    payeeName: string | null;
+    startDate: string | null;
+    paymentMethod: string | null;
+    paymentMethodId: string | null;
+    installments: Installment[];
   }[];
 };
 
@@ -154,9 +169,15 @@ export function ProjectDetailClient({
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const isContractor = detail.kind === "BUILD_CONTRACTOR";
-  const pending = detail.installments.filter((i) => i.status === "PENDING");
-  const paidCount = detail.installments.filter((i) => i.status === "PAID").length;
-  const plan = detail.paymentPlans[0] ?? null;
+  const [selectedPlanId, setSelectedPlanId] = useState(
+    detail.plans[0]?.id ?? detail.paymentPlans[0]?.id ?? ""
+  );
+  const activePlanData =
+    detail.plans.find((p) => p.id === selectedPlanId) ?? detail.plans[0] ?? null;
+  const planInstallments = activePlanData?.installments ?? detail.installments;
+  const pending = planInstallments.filter((i) => i.status === "PENDING");
+  const paidCount = planInstallments.filter((i) => i.status === "PAID").length;
+  const plan = activePlanData ?? detail.paymentPlans[0] ?? null;
   const KindIcon = isContractor ? Hammer : FolderKanban;
   const [showHistory, setShowHistory] = useState(false);
 
@@ -456,6 +477,17 @@ export function ProjectDetailClient({
               existingPlan={plan}
               triggerLabel={plan ? "تعديل خطة الدفع" : "إنشاء خطة دفع"}
             />
+            {detail.plans.length > 0 && (
+              <BuildingPaymentSheet
+                projectId={detail.id}
+                projectTitle={detail.title}
+                paymentMethods={paymentMethods}
+                defaultTotal={detail.remaining > 0 ? detail.remaining : detail.totalBudget}
+                defaultPayee={detail.title}
+                forceCreate
+                triggerLabel="خطة دفع جديدة"
+              />
+            )}
           </div>
         </div>
 
@@ -472,7 +504,7 @@ export function ProjectDetailClient({
             { label: "المتبقي", value: detail.remaining, color: "text-amber-700" },
             {
               label: "الدفعات",
-              value: `${paidCount}/${detail.installments.length || "—"}`,
+              value: `${paidCount}/${planInstallments.length || "—"}`,
               color: "text-indigo-700",
               isText: true,
             },
@@ -490,13 +522,34 @@ export function ProjectDetailClient({
         <Progress value={detail.percentComplete} className="mt-4 h-2" />
       </motion.div>
 
+      {/* Plan tabs when multiple plans */}
+      {detail.plans.length > 1 && (
+        <div className="flex flex-wrap gap-2">
+          {detail.plans.map((p, idx) => (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => setSelectedPlanId(p.id)}
+              className={cn(
+                "rounded-full border px-4 py-1.5 text-sm font-semibold transition-all",
+                selectedPlanId === p.id
+                  ? "border-indigo-600 bg-indigo-600 text-white"
+                  : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+              )}
+            >
+              {p.title ?? `خطة ${detail.plans.length - idx}`}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Plan summary: who, way of payment, start point */}
       {plan && (
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
               <Wallet className="h-5 w-5" />
-              تفاصيل خطة الدفع
+              {plan.title ? plan.title : "تفاصيل خطة الدفع"}
             </CardTitle>
             <Button
               variant="ghost"
@@ -555,7 +608,7 @@ export function ProjectDetailClient({
         <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
             <Calendar className="h-5 w-5" />
-            جدول الدفعات الشهرية ({detail.installments.length})
+            جدول الدفعات الشهرية ({planInstallments.length})
           </CardTitle>
           <div className="flex items-center gap-3">
             {pending.length > 0 && (
@@ -619,7 +672,7 @@ export function ProjectDetailClient({
             </div>
           )}
 
-          {detail.installments.length === 0 ? (
+          {planInstallments.length === 0 ? (
             <div className="rounded-xl border border-dashed border-slate-200 p-6 text-center">
               <p className="text-sm text-slate-500">
                 لا توجد خطة دفع بعد — اضغط «إنشاء خطة دفع» لإضافة الدفعة الأولى
@@ -627,7 +680,7 @@ export function ProjectDetailClient({
               </p>
             </div>
           ) : (
-            detail.installments.map((inst) => {
+            planInstallments.map((inst) => {
               const isPaid = inst.status === "PAID";
               const isEditing = editingId === inst.id;
               return (

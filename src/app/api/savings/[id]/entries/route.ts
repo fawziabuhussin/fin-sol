@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/session";
 import { handleApiError } from "@/lib/api-error";
+import { createSavingsContributionTransaction } from "@/lib/savings-contribution";
 import {
   paidAtForPeriod,
   parsePaymentIntoMonths,
@@ -40,6 +41,43 @@ export async function PATCH(
         : paidAtForPeriod(d.periodYear, d.periodMonth)
       : null;
 
+    const existing = await prisma.savingsEntry.findUnique({
+      where: {
+        planId_periodYear_periodMonth: {
+          planId,
+          periodYear: d.periodYear,
+          periodMonth: d.periodMonth,
+        },
+      },
+    });
+
+    let transactionId = existing?.transactionId ?? null;
+
+    if (paid && !transactionId) {
+      const tx = await createSavingsContributionTransaction({
+        userId: user.id,
+        planTitle: plan.title,
+        amount: d.amount,
+        occurredAt: paidAt!,
+        notes: d.notes ?? null,
+      });
+      transactionId = tx.id;
+    } else if (!paid && transactionId) {
+      await prisma.transaction
+        .delete({ where: { id: transactionId } })
+        .catch(() => null);
+      transactionId = null;
+    } else if (paid && transactionId) {
+      await prisma.transaction.update({
+        where: { id: transactionId },
+        data: {
+          amount: d.amount,
+          occurredAt: paidAt!,
+          ...(d.notes !== undefined ? { notes: d.notes || null } : {}),
+        },
+      });
+    }
+
     const entry = await prisma.savingsEntry.upsert({
       where: {
         planId_periodYear_periodMonth: {
@@ -57,12 +95,14 @@ export async function PATCH(
         isPayout: d.isPayout ?? false,
         paidAt,
         notes: d.notes || null,
+        transactionId,
       },
       update: {
         amount: d.amount,
         paid,
         ...(d.isPayout !== undefined ? { isPayout: d.isPayout } : {}),
         paidAt,
+        transactionId,
         ...(d.notes !== undefined ? { notes: d.notes || null } : {}),
       },
     });

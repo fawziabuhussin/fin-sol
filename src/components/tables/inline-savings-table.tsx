@@ -8,7 +8,7 @@ import { Check, ChevronLeft, Loader2 } from "lucide-react";
 type SavingsRow = {
   id: string;
   title: string;
-  type: "JAMIYA" | "PERSONAL";
+  type: "JAMIYA" | "PERSONAL" | "KUPOT";
   monthlyContribution: number;
   targetAmount: number | null;
   status: string;
@@ -109,6 +109,7 @@ export function InlineSavingsTable({
                 >
                   <option value="JAMIYA">جمعية</option>
                   <option value="PERSONAL">شخصي</option>
+                  <option value="KUPOT">קופות</option>
                 </select>
               </td>
               <td className="p-2">

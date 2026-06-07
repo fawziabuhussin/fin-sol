@@ -22,6 +22,7 @@ import { formatCurrency } from "@/lib/utils";
 
 export type ExistingPaymentPlan = {
   id: string;
+  title?: string | null;
   mode: string;
   totalAmount: number;
   installmentCount: number | null;
@@ -40,6 +41,7 @@ export function BuildingPaymentSheet({
   defaultPayee = "",
   triggerLabel = "خطة دفع",
   existingPlan,
+  forceCreate = false,
 }: {
   projectId: string;
   projectTitle: string;
@@ -48,9 +50,11 @@ export function BuildingPaymentSheet({
   defaultPayee?: string;
   triggerLabel?: string;
   existingPlan?: ExistingPaymentPlan | null;
+  /** When true, always POST a new plan even if existingPlan is set */
+  forceCreate?: boolean;
 }) {
   const router = useRouter();
-  const isEdit = Boolean(existingPlan);
+  const isEdit = Boolean(existingPlan) && !forceCreate;
   const [open, setOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [mode, setMode] = useState<"FULL" | "INSTALLMENTS">("INSTALLMENTS");
@@ -62,6 +66,7 @@ export function BuildingPaymentSheet({
     new Date().toISOString().slice(0, 10)
   );
   const [paymentMethodId, setPaymentMethodId] = useState("");
+  const [planTitle, setPlanTitle] = useState("");
 
   const loadFromPlan = (plan: ExistingPaymentPlan | null | undefined) => {
     if (plan) {
@@ -72,7 +77,9 @@ export function BuildingPaymentSheet({
       setPayeeName(plan.payeeName ?? defaultPayee);
       setStartDate(plan.startDate ?? new Date().toISOString().slice(0, 10));
       setPaymentMethodId(plan.paymentMethodId ?? "");
+      setPlanTitle(plan.title ?? "");
     } else {
+      setPlanTitle("");
       setMode(defaultTotal > 0 ? "INSTALLMENTS" : "FULL");
       setTotalAmount(defaultTotal);
       setInstallmentCount(4);
@@ -99,6 +106,7 @@ export function BuildingPaymentSheet({
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
+            title: planTitle || undefined,
             mode,
             totalAmount,
             installmentCount: mode === "INSTALLMENTS" ? installmentCount : undefined,
@@ -115,6 +123,7 @@ export function BuildingPaymentSheet({
         toast.success("تم تحديث خطة الدفع");
       } else {
         const payload: PaymentPlanInput = {
+          title: planTitle || undefined,
           mode,
           totalAmount,
           installmentCount: mode === "INSTALLMENTS" ? installmentCount : undefined,
@@ -153,6 +162,14 @@ export function BuildingPaymentSheet({
           </SheetTitle>
         </SheetHeader>
         <div className="mt-6 space-y-4">
+          <div>
+            <Label>اسم الخطة (اختياري)</Label>
+            <Input
+              value={planTitle}
+              placeholder="مثال: مرحلة 1، دفعة أولى..."
+              onChange={(e) => setPlanTitle(e.target.value)}
+            />
+          </div>
           <div>
             <Label>لمن الدفع؟ (المستفيد / المقاول)</Label>
             <Input

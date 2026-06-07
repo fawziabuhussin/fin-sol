@@ -16,7 +16,7 @@ import { InlineSavingsTable } from "@/components/tables/inline-savings-table";
 type SavingsRow = {
   id: string;
   title: string;
-  type: "JAMIYA" | "PERSONAL";
+  type: "JAMIYA" | "PERSONAL" | "KUPOT";
   monthlyContribution: number;
   targetAmount: number | null;
   status: "ACTIVE" | "COMPLETED" | "PAUSED" | "CANCELLED";
@@ -74,6 +74,7 @@ export function SavingsPageClient({ items }: { items: SavingsRow[] }) {
               <Select {...form.register("type")}>
                 <option value="JAMIYA">جمعية</option>
                 <option value="PERSONAL">ادخار شخصي</option>
+                <option value="KUPOT">קופות (פנסיה)</option>
               </Select>
             </div>
             <div>

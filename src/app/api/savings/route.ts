@@ -18,10 +18,13 @@ export async function POST(req: Request) {
         userId: user.id,
         title: data.title,
         type: data.type,
+        employerId: data.employerId || null,
         monthlyContribution: data.monthlyContribution,
         targetAmount: data.targetAmount ?? null,
         payoutDate: data.payoutDate ? new Date(data.payoutDate) : null,
         startDate: data.startDate ? new Date(data.startDate) : null,
+        durationMonths: data.durationMonths ?? null,
+        notes: data.notes || null,
         status: data.status,
       },
     });

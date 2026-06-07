@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Coffee, Minus, Plus } from "lucide-react";
+import { Coffee, Coins, DollarSign, Minus, Plus } from "lucide-react";
 import { toast } from "sonner";
 import {
   Sheet,
@@ -36,12 +36,17 @@ export function QuickAddSheet({
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
+  const [mode, setMode] = useState<"TRANSACTION" | "SAVINGS_ASSET">("TRANSACTION");
   const [type, setType] = useState<"EXPENSE" | "INCOME">("EXPENSE");
   const [amount, setAmount] = useState("");
   const [categoryId, setCategoryId] = useState<string>("");
   const [description, setDescription] = useState("");
   const [occurredAt, setOccurredAt] = useState(today);
   const [paymentMethodId, setPaymentMethodId] = useState<string>("");
+  const [assetKind, setAssetKind] = useState<"USD" | "GOLD">("USD");
+  const [assetQuantity, setAssetQuantity] = useState("");
+  const [assetUnitPrice, setAssetUnitPrice] = useState("");
+  const [goldKarat, setGoldKarat] = useState(21);
 
   const categories = useMemo(
     () => lookups.categories.filter((c) => c.kind === type),
@@ -57,6 +62,45 @@ export function QuickAddSheet({
   }
 
   function submit() {
+    if (mode === "SAVINGS_ASSET") {
+      const qty = Number(assetQuantity);
+      const price = Number(assetUnitPrice);
+      if (!qty || qty <= 0 || !price || price <= 0) {
+        toast.error("أدخل الكمية والسعر");
+        return;
+      }
+      startTransition(async () => {
+        const res = await fetch("/api/quick-add", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            kind: "SAVINGS_ASSET",
+            payload: {
+              kind: assetKind,
+              quantity: qty,
+              unitPrice: price,
+              goldKarat: assetKind === "GOLD" ? goldKarat : undefined,
+              purchasedAt: occurredAt,
+              notes: description || "",
+            },
+          }),
+        });
+        if (!res.ok) {
+          toast.error("تعذّر الحفظ");
+          return;
+        }
+        toast.success(
+          assetKind === "USD"
+            ? `تمت إضافة ${qty}$ للادخار`
+            : `تمت إضافة ${qty} غرام ذهب`
+        );
+        reset();
+        onOpenChange(false);
+        router.refresh();
+      });
+      return;
+    }
+
     const value = Number(amount);
     if (!value || value <= 0) {
       toast.error("أدخل مبلغاً صحيحاً");
@@ -108,6 +152,116 @@ export function QuickAddSheet({
         </SheetHeader>
 
         <div className="mt-6 space-y-5">
+          {/* Mode: transaction vs savings asset */}
+          <div className="grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1">
+            <button
+              type="button"
+              onClick={() => setMode("TRANSACTION")}
+              className={cn(
+                "flex items-center justify-center gap-1.5 rounded-lg py-2 text-sm font-semibold transition-all",
+                mode === "TRANSACTION"
+                  ? "bg-white text-indigo-700 shadow-sm"
+                  : "text-slate-500 hover:text-slate-700"
+              )}
+            >
+              <Coffee className="h-4 w-4" /> معاملة
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode("SAVINGS_ASSET")}
+              className={cn(
+                "flex items-center justify-center gap-1.5 rounded-lg py-2 text-sm font-semibold transition-all",
+                mode === "SAVINGS_ASSET"
+                  ? "bg-white text-amber-700 shadow-sm"
+                  : "text-slate-500 hover:text-slate-700"
+              )}
+            >
+              <Coins className="h-4 w-4" /> ادخار
+            </button>
+          </div>
+
+          {mode === "SAVINGS_ASSET" ? (
+            <>
+              <div className="grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1">
+                <button
+                  type="button"
+                  onClick={() => setAssetKind("USD")}
+                  className={cn(
+                    "flex items-center justify-center gap-1.5 rounded-lg py-2 text-sm font-semibold transition-all",
+                    assetKind === "USD"
+                      ? "bg-white text-emerald-600 shadow-sm"
+                      : "text-slate-500"
+                  )}
+                >
+                  <DollarSign className="h-4 w-4" /> دولار
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAssetKind("GOLD")}
+                  className={cn(
+                    "flex items-center justify-center gap-1.5 rounded-lg py-2 text-sm font-semibold transition-all",
+                    assetKind === "GOLD"
+                      ? "bg-white text-amber-600 shadow-sm"
+                      : "text-slate-500"
+                  )}
+                >
+                  <Coins className="h-4 w-4" /> ذهب
+                </button>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label>{assetKind === "USD" ? "المبلغ ($)" : "الوزن (غرام)"}</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    value={assetQuantity}
+                    onChange={(e) => setAssetQuantity(e.target.value)}
+                    placeholder={assetKind === "USD" ? "1200" : "10"}
+                  />
+                </div>
+                <div>
+                  <Label>{assetKind === "USD" ? "سعر الصرف (₪/$)" : "سعر الغرام (₪)"}</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    value={assetUnitPrice}
+                    onChange={(e) => setAssetUnitPrice(e.target.value)}
+                  />
+                </div>
+              </div>
+              {assetKind === "GOLD" && (
+                <div>
+                  <Label>العيار</Label>
+                  <Select
+                    value={String(goldKarat)}
+                    onChange={(e) => setGoldKarat(Number(e.target.value))}
+                  >
+                    <option value="14">14K</option>
+                    <option value="18">18K</option>
+                    <option value="21">21K</option>
+                    <option value="24">24K</option>
+                  </Select>
+                </div>
+              )}
+              <div>
+                <Label>تاريخ الشراء</Label>
+                <Input
+                  type="date"
+                  value={occurredAt}
+                  onChange={(e) => setOccurredAt(e.target.value)}
+                />
+              </div>
+              <div>
+                <Label>ملاحظة</Label>
+                <Input
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder="مصدر الشراء..."
+                />
+              </div>
+            </>
+          ) : (
+            <>
           {/* Expense / Income toggle */}
           <div className="grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1">
             <button
@@ -224,6 +378,8 @@ export function QuickAddSheet({
               placeholder="قهوة، بقالة، ..."
             />
           </div>
+            </>
+          )}
 
           <div className="flex justify-end gap-2 pt-1">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
