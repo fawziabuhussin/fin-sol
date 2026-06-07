@@ -1,90 +1,16 @@
 /**
- * Seed انطلاقة קופות for Jan–Sep 2025 from תלוש breakdowns.
- * Months 1–3: higher rate (אלטי + הפניקס תלוש).
- * Months 4–9: lower rate (179.98 ₪ employee total per month).
- *
+ * Seed انطلاقة static קופות for all months 2025 (מנורה + אקסלנס).
  * Usage: npx tsx scripts/seed-intilaqa-salary-2025.ts
  */
 import "dotenv/config";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Pool } from "pg";
 import { PrismaClient } from "../src/generated/prisma/client";
-import type { SalarySlipBreakdown } from "../src/lib/payslip-types";
+import { resolveIntilaqaSlip } from "../src/lib/intilaqa-payslip";
 
 const userEmail = process.env.IMPORT_USER_EMAIL || "foze820@gmail.com";
 const year = 2025;
-
-/** Jan–Mar 2025 — תלוש גבוה */
-const highPeriod = {
-  pension: 242.51,
-  kerenHishtalmut: 85.61,
-  gross: 5200,
-  net: 4500,
-  tax: 390,
-  breakdown: {
-    taxes: { nationalInsurance: 75, healthInsurance: 232, incomeTax: 83, total: 390 },
-    pension: {
-      employee: 242.51,
-      employer: 548.42,
-      severanceEmployer: 288.59,
-      lines: [
-        {
-          fund: "473",
-          type: "קצבה שכיר-תגמולים",
-          employee: 242.51,
-          employer: 259.83,
-          base: 3464.42,
-        },
-        {
-          fund: "473",
-          type: "פיצויים",
-          employee: 0,
-          employer: 288.59,
-          base: 3464.42,
-        },
-      ],
-    },
-    keren: { employee: 85.61, employer: 256.82 },
-  } satisfies SalarySlipBreakdown,
-};
-
-/** Apr–Sep 2025 — תלוש נמוך (סה״כ ניכוי עובד 179.98) */
-const lowPeriod = {
-  pension: 133.02,
-  kerenHishtalmut: 46.96,
-  gross: 2850,
-  net: 2490,
-  tax: 170,
-  breakdown: {
-    taxes: { nationalInsurance: 42, healthInsurance: 128, incomeTax: 0, total: 170 },
-    pension: {
-      employee: 133.02,
-      employer: 300.81,
-      severanceEmployer: 158.29,
-      lines: [
-        {
-          fund: "458",
-          type: "קצבה שכיר-תגמולים",
-          employee: 133.02,
-          employer: 142.52,
-          base: 1900.3,
-        },
-        {
-          fund: "458",
-          type: "פיצויים",
-          employee: 0,
-          employer: 158.29,
-          base: 1900.3,
-        },
-      ],
-    },
-    keren: { employee: 46.96, employer: 140.87 },
-  } satisfies SalarySlipBreakdown,
-};
-
-function slipForMonth(month: number) {
-  return month <= 3 ? highPeriod : lowPeriod;
-}
+const months = Array.from({ length: 12 }, (_, i) => i + 1);
 
 async function main() {
   const pool = new Pool({ connectionString: process.env.DATABASE_URL });
@@ -99,11 +25,28 @@ async function main() {
   if (!employer) throw new Error("Employer انطلاقة not found");
 
   console.log(`Employer: ${employer.name}`);
-  console.log("Seeding 2025 months 1–9 (קופות only — no income sync)\n");
+  console.log("Seeding static 2025 קופות (₪340 עובד + ₪893.20 מעסיק / month)\n");
 
-  for (let periodMonth = 1; periodMonth <= 9; periodMonth++) {
-    const slip = slipForMonth(periodMonth);
-    const tier = periodMonth <= 3 ? "high" : "low";
+  const paidThrough = 9;
+
+  for (const periodMonth of months) {
+    const slip = resolveIntilaqaSlip(year, periodMonth);
+    if (!slip) continue;
+
+    const existing = await prisma.salarySlip.findUnique({
+      where: {
+        userId_employerId_periodYear_periodMonth: {
+          userId: user.id,
+          employerId: employer.id,
+          periodYear: year,
+          periodMonth,
+        },
+      },
+      select: { paid: true, paidAt: true },
+    });
+
+    const paid = existing?.paid ?? periodMonth <= paidThrough;
+
     await prisma.salarySlip.upsert({
       where: {
         userId_employerId_periodYear_periodMonth: {
@@ -119,37 +62,38 @@ async function main() {
         periodYear: year,
         periodMonth,
         worked: true,
-        paid: true,
-        paidAt: new Date(`${year}-${String(periodMonth).padStart(2, "0")}-28`),
+        paid,
+        paidAt:
+          paid && !existing?.paidAt
+            ? new Date(`${year}-${String(periodMonth).padStart(2, "0")}-28`)
+            : existing?.paidAt ?? null,
         gross: slip.gross,
         net: slip.net,
         tax: slip.tax,
         pension: slip.pension,
         kerenHishtalmut: slip.kerenHishtalmut,
-        fees: 0,
-        bonus: 0,
-        slipBreakdown: slip.breakdown,
-        notes: `2025 קופות — ${tier} תלוש (ייבוא)`,
+        fees: slip.fees,
+        bonus: slip.bonus,
+        slipBreakdown: slip.slipBreakdown,
+        notes: slip.notes,
       },
       update: {
         worked: true,
+        gross: slip.gross,
+        net: slip.net,
+        tax: slip.tax,
         pension: slip.pension,
         kerenHishtalmut: slip.kerenHishtalmut,
-        slipBreakdown: slip.breakdown,
-        notes: `2025 קופות — ${tier} תלוש (ייבוא)`,
+        fees: slip.fees,
+        bonus: slip.bonus,
+        slipBreakdown: slip.slipBreakdown,
+        notes: slip.notes,
       },
     });
     console.log(
-      `  ${year}-${String(periodMonth).padStart(2, "0")}: פנסיה ₪${slip.pension} + קרן ₪${slip.kerenHishtalmut} = ₪${(slip.pension + slip.kerenHishtalmut).toFixed(2)}`
+      `  ${year}-${String(periodMonth).padStart(2, "0")}: עובד ₪340 + מעסיק ₪893.20${paid ? " · paid" : ""}`
     );
   }
-
-  const slips = await prisma.salarySlip.findMany({
-    where: { employerId: employer.id, periodYear: year, worked: true },
-  });
-  const pensionSum = slips.reduce((s, x) => s + Number(x.pension), 0);
-  const kerenSum = slips.reduce((s, x) => s + Number(x.kerenHishtalmut), 0);
-  console.log(`\n2025 totals: פנסיה ₪${pensionSum.toFixed(2)} · קרן ₪${kerenSum.toFixed(2)} · סה״כ ₪${(pensionSum + kerenSum).toFixed(2)}`);
 
   await prisma.$disconnect();
   await pool.end();

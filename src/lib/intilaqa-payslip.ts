@@ -9,8 +9,8 @@ export function isIntilaqaEmployer(name: string) {
   );
 }
 
-/** March 2026 תלוש — מנורה 116 + אקסלנס 114, בסיס ₪4,000 */
-const INTILAQA_KUPOT: SalarySlipBreakdown = {
+/** Static monthly תלוש — מנורה 116 + אקסלנס 114, בסיס ₪4,000 (every month). */
+export const INTILAQA_KUPOT: SalarySlipBreakdown = {
   taxes: {
     nationalInsurance: 50,
     healthInsurance: 155,
@@ -51,6 +51,17 @@ const INTILAQA_KUPOT: SalarySlipBreakdown = {
   },
 };
 
+/** Same every month — employee ₪340, employer ₪893.20 */
+export const INTILAQA_STATIC_AMOUNTS = {
+  gross: 4562,
+  net: 4017,
+  tax: 205,
+  pension: 240,
+  kerenHishtalmut: 100,
+  fees: 0,
+  bonus: 0,
+} as const;
+
 export type IntilaqaSlipPayload = {
   gross: number;
   net: number;
@@ -63,7 +74,7 @@ export type IntilaqaSlipPayload = {
   notes: string;
 };
 
-/** Full תלוש + קופות for انطلاقة when marking a month as paid. */
+/** Full static תלוש + קופות for انطلاقة when marking a month as paid (2026 only). */
 export function resolveIntilaqaSlip(
   periodYear: number,
   periodMonth: number
@@ -72,14 +83,8 @@ export function resolveIntilaqaSlip(
   if (periodMonth < 1 || periodMonth > 12) return null;
 
   return {
-    gross: 4562,
-    net: 4017,
-    tax: 205,
-    pension: 240,
-    kerenHishtalmut: 100,
-    fees: 0,
-    bonus: 0,
+    ...INTILAQA_STATIC_AMOUNTS,
     slipBreakdown: INTILAQA_KUPOT,
-    notes: `תלוש انطلاقة — חודש ${periodMonth}/2026 (תגמולים + פיצויים + השתלמות)`,
+    notes: `תלוש انطلاقة — חודש ${periodMonth}/${periodYear} (תגמולים + פיצויים + השתלמות)`,
   };
 }

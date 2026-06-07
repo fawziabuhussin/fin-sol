@@ -7,61 +7,19 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { Pool } from "pg";
 import { PrismaClient } from "../src/generated/prisma/client";
 import { syncSalarySlipIncome } from "../src/lib/salary-income-sync";
-import type { SalarySlipBreakdown } from "../src/lib/payslip-types";
+import {
+  INTILAQA_KUPOT,
+  INTILAQA_STATIC_AMOUNTS,
+  resolveIntilaqaSlip,
+} from "../src/lib/intilaqa-payslip";
 
 const userEmail = process.env.IMPORT_USER_EMAIL || "foze820@gmail.com";
 const year = 2026;
 const months = Array.from({ length: 12 }, (_, i) => i + 1);
 
-/** March 2026 תלוש — 50% משרה */
 const slip = {
-  gross: 4562,
-  net: 4017,
-  tax: 205,
-  pension: 240,
-  kerenHishtalmut: 100,
-  fees: 0,
-  bonus: 0,
-  breakdown: {
-    taxes: {
-      nationalInsurance: 50,
-      healthInsurance: 155,
-      incomeTax: 0,
-      total: 205,
-    },
-    pension: {
-      employee: 240,
-      employer: 593.2,
-      severanceEmployer: 333.2,
-      lines: [
-        {
-          fund: "116",
-          type: "קצבה שכיר-תגמולים",
-          employee: 240,
-          employer: 260,
-          base: 4000,
-        },
-        {
-          fund: "116",
-          type: "קצבה שכיר-פיצויים",
-          employee: 0,
-          employer: 333.2,
-          base: 4000,
-        },
-        {
-          fund: "114",
-          type: "קרן השתלמות",
-          employee: 100,
-          employer: 300,
-          base: 4000,
-        },
-      ],
-    },
-    keren: {
-      employee: 100,
-      employer: 300,
-    },
-  } satisfies SalarySlipBreakdown,
+  ...INTILAQA_STATIC_AMOUNTS,
+  breakdown: INTILAQA_KUPOT,
 };
 
 async function main() {
@@ -96,6 +54,9 @@ async function main() {
   const paidThrough = 5;
 
   for (const periodMonth of months) {
+    const template = resolveIntilaqaSlip(year, periodMonth);
+    if (!template) continue;
+
     const row = await prisma.salarySlip.upsert({
       where: {
         userId_employerId_periodYear_periodMonth: {
@@ -116,27 +77,35 @@ async function main() {
           periodMonth <= paidThrough
             ? new Date(`${year}-${String(periodMonth).padStart(2, "0")}-28`)
             : null,
-        gross: slip.gross,
-        net: slip.net,
-        tax: slip.tax,
-        pension: slip.pension,
-        kerenHishtalmut: slip.kerenHishtalmut,
-        fees: slip.fees,
-        bonus: slip.bonus,
-        slipBreakdown: slip.breakdown,
-        notes: "תלוש מרץ 2026 — מנורה + אקסלנס (ייבוא שנתי)",
+        gross: template.gross,
+        net: template.net,
+        tax: template.tax,
+        pension: template.pension,
+        kerenHishtalmut: template.kerenHishtalmut,
+        fees: template.fees,
+        bonus: template.bonus,
+        slipBreakdown: template.slipBreakdown,
+        notes: template.notes,
       },
       update: {
         worked: true,
-        gross: slip.gross,
-        net: slip.net,
-        tax: slip.tax,
-        pension: slip.pension,
-        kerenHishtalmut: slip.kerenHishtalmut,
-        fees: slip.fees,
-        bonus: slip.bonus,
-        slipBreakdown: slip.breakdown,
-        notes: "תלוש מרץ 2026 — מנורה + אקסלנס (ייבוא שנתי)",
+        ...(periodMonth <= paidThrough
+          ? {
+              paid: true,
+              paidAt: new Date(
+                `${year}-${String(periodMonth).padStart(2, "0")}-28`
+              ),
+            }
+          : {}),
+        gross: template.gross,
+        net: template.net,
+        tax: template.tax,
+        pension: template.pension,
+        kerenHishtalmut: template.kerenHishtalmut,
+        fees: template.fees,
+        bonus: template.bonus,
+        slipBreakdown: template.slipBreakdown,
+        notes: template.notes,
       },
     });
     await syncSalarySlipIncome(row.id);

@@ -1086,7 +1086,7 @@ export async function getEmployerKupot(userId: string) {
     where: { userId, active: true },
     include: {
       salarySlips: {
-        where: { worked: true, paid: true },
+        where: { worked: true, paid: true, periodYear: { gte: 2026 } },
         orderBy: [{ periodYear: "asc" }, { periodMonth: "asc" }],
       },
       savingsPlans: {
