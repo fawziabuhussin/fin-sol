@@ -1,7 +1,6 @@
 "use client";
 
 import Image from "next/image";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState, useTransition } from "react";
 import { motion } from "framer-motion";
@@ -345,16 +344,9 @@ function AssetCard({
   );
 }
 
-export function SavingsSummary({
-  data,
-  showKupotLink = false,
-}: {
-  data: SavingsSummaryData;
-  showKupotLink?: boolean;
-}) {
-  const { summary, charts, assets, kupot } = data;
+export function SavingsSummary({ data }: { data: SavingsSummaryData }) {
+  const { summary, charts, assets } = data;
   const hasChartData = charts.portfolio.length > 0;
-  const kupotWithBalance = kupot.filter((k) => k.kupotTotal > 0);
 
   return (
     <div className="space-y-6">
@@ -430,21 +422,15 @@ export function SavingsSummary({
             تفصيل إجمالي المتراكم — {formatCurrency(summary.accumulatedTotal)}
           </p>
           <p className="mt-1 text-xs text-slate-500">
-            كل مكوّن يُضاف فقط عند تسجيل الدفع (جمعيات ✓ / راتب ✓)
+            جمعيات مدفوعة + قيمة الأصول (ذهب ودولار) — بدون קופות
           </p>
-          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="mt-4 grid gap-3 sm:grid-cols-3">
             {[
               {
                 label: "جمعيات (مدفوع)",
                 value: summary.jamiyaPaidTotal,
                 color: "text-indigo-700",
                 bg: "bg-indigo-50",
-              },
-              {
-                label: "קופות (עובד + מעסיק)",
-                value: summary.kupotTotal,
-                color: "text-violet-700",
-                bg: "bg-violet-50",
               },
               {
                 label: "ذهب",
@@ -472,50 +458,6 @@ export function SavingsSummary({
           </div>
         </CardContent>
       </Card>
-
-      {showKupotLink && summary.kupotTotal > 0 && (
-        <Link href="/savings/kupot">
-          <Card className="border-violet-100 bg-gradient-to-l from-violet-50 to-indigo-50 shadow-sm transition hover:shadow-md">
-            <CardContent className="flex flex-wrap items-center justify-between gap-4 p-5">
-              <div>
-                <p className="flex items-center gap-2 text-sm font-semibold text-violet-800">
-                  <PiggyBank className="h-4 w-4" />
-                  קופות — פנסיה וקרן השתלמות
-                </p>
-                <p className="mt-1 text-xs text-slate-600">
-                  {kupotWithBalance.length} جهة عمل · עובד + מעסיק
-                </p>
-                <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-sm">
-                  <span>
-                    <span className="text-slate-500">חלקך: </span>
-                    <span className="font-bold text-violet-800">
-                      {formatCurrency(
-                        kupotWithBalance.reduce((s, k) => s + k.employeeTotal, 0)
-                      )}
-                    </span>
-                  </span>
-                  <span>
-                    <span className="text-slate-500">מעסיק: </span>
-                    <span className="font-bold text-indigo-800">
-                      {formatCurrency(
-                        kupotWithBalance.reduce((s, k) => s + k.employerTotal, 0)
-                      )}
-                    </span>
-                  </span>
-                </div>
-              </div>
-              <div className="text-left">
-                <p className="text-3xl font-extrabold text-violet-700">
-                  {formatCurrency(summary.kupotTotal)}
-                </p>
-                <p className="mt-1 text-sm font-medium text-violet-600">
-                  عرض التفاصيل ←
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-        </Link>
-      )}
 
       {/* Gold & Dollar assets */}
       <div>

@@ -7,10 +7,11 @@ import { SavingsTabs } from "@/components/savings/savings-tabs";
 
 export default async function SavingsPage() {
   const user = await requireUser();
-  const [items, summary] = await Promise.all([
+  const [allItems, summary] = await Promise.all([
     listSavings(user.id),
     getSavingsSummary(user.id),
   ]);
+  const items = allItems.filter((item) => item.type !== "KUPOT");
 
   return (
     <div className="space-y-6">
@@ -23,7 +24,7 @@ export default async function SavingsPage() {
 
       <SavingsTabs />
 
-      <SavingsSummary data={summary} showKupotLink />
+      <SavingsSummary data={summary} />
 
       <SavingsPageClient
         items={items.map((item) => ({

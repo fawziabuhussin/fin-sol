@@ -74,7 +74,6 @@ export function SavingsPageClient({ items }: { items: SavingsRow[] }) {
               <Select {...form.register("type")}>
                 <option value="JAMIYA">جمعية</option>
                 <option value="PERSONAL">ادخار شخصي</option>
-                <option value="KUPOT">קופות (פנסיה)</option>
               </Select>
             </div>
             <div>

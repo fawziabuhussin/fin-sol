@@ -1,9 +1,8 @@
 "use client";
 
 import { Fragment } from "react";
-import Link from "next/link";
 import { motion } from "framer-motion";
-import { ArrowRight, Building2, Landmark, Users, Wallet } from "lucide-react";
+import { Building2, Landmark, Users, Wallet } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatCurrency } from "@/lib/utils";
 import { SavingsTabs } from "@/components/savings/savings-tabs";
@@ -65,16 +64,9 @@ export function KupotPageClient({ data }: { data: KupotPageData }) {
   return (
     <div className="space-y-6">
       <div>
-        <Link
-          href="/savings"
-          className="mb-3 inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-800"
-        >
-          <ArrowRight className="h-4 w-4" />
-          الجمعية والادخار
-        </Link>
-        <h1 className="text-2xl font-extrabold">קופות — פנסיה וקרן השתלמות</h1>
+        <h1 className="text-2xl font-extrabold">الجمعية والادخار</h1>
         <p className="mt-1 text-sm text-slate-500">
-          חלקך + חלק המעסיק — נספר רק לחודשים שסומנו כ־✓ שולם
+          קופות — פנסיה וקרן השתלמות · חלקך + חלק המעסיק (חודשים שסומנו כ־✓ שולם)
         </p>
       </div>
 

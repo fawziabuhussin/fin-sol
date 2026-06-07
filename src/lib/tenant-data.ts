@@ -1479,9 +1479,9 @@ export async function listSavings(userId: string) {
 }
 
 export async function getSavingsSummary(userId: string) {
-  const [plans, assets, kupot] = await Promise.all([
+  const [plans, assets] = await Promise.all([
     prisma.savingsPlan.findMany({
-      where: { userId },
+      where: { userId, type: { not: "KUPOT" } },
       include: { entries: true },
       orderBy: { createdAt: "desc" },
     }),
@@ -1492,7 +1492,6 @@ export async function getSavingsSummary(userId: string) {
       },
       orderBy: [{ kind: "asc" }, { createdAt: "asc" }],
     }),
-    getEmployerKupot(userId),
   ]);
 
   let jamiyaPaidTotal = 0;
@@ -1558,8 +1557,6 @@ export async function getSavingsSummary(userId: string) {
   };
   });
 
-  const kupotTotal = kupot.reduce((sum, k) => sum + k.kupotTotal, 0);
-
   const goldTotal = assetItems
     .filter((a) => a.kind === "GOLD")
     .reduce((sum, a) => sum + a.valueIls, 0);
@@ -1567,15 +1564,12 @@ export async function getSavingsSummary(userId: string) {
     .filter((a) => a.kind === "USD")
     .reduce((sum, a) => sum + a.valueIls, 0);
   const assetsTotal = goldTotal + usdTotal;
-  const accumulatedTotal = jamiyaPaidTotal + assetsTotal + kupotTotal;
+  const accumulatedTotal = jamiyaPaidTotal + assetsTotal;
   const remainingToPay = Math.max(0, committedTotal - jamiyaPaidTotal);
 
   const portfolioChart = [
     ...(jamiyaPaidTotal > 0
       ? [{ name: "جمعيات (مدفوع)", value: jamiyaPaidTotal, fill: "#6366f1" }]
-      : []),
-    ...(kupotTotal > 0
-      ? [{ name: "קופות", value: kupotTotal, fill: "#8b5cf6" }]
       : []),
     ...(goldTotal > 0 ? [{ name: "ذهب", value: goldTotal, fill: "#f59e0b" }] : []),
     ...(usdTotal > 0 ? [{ name: "دولار", value: usdTotal, fill: "#059669" }] : []),
@@ -1601,11 +1595,11 @@ export async function getSavingsSummary(userId: string) {
       assetsTotal,
       goldTotal,
       usdTotal,
-      kupotTotal,
+      kupotTotal: 0,
     },
     planProgress,
     assets: assetItems,
-    kupot,
+    kupot: [],
     charts: {
       portfolio: portfolioChart,
       commitment: commitmentChart,
