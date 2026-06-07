@@ -4,7 +4,7 @@ import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { type ColumnDef } from "@tanstack/react-table";
+import { type ColumnDef, type RowSelectionState } from "@tanstack/react-table";
 import {
   ArrowDownCircle,
   ArrowUpCircle,
@@ -13,6 +13,7 @@ import {
   ChevronRight,
   Plus,
   Search,
+  Trash2,
   Wallet,
   Briefcase,
   X,
@@ -84,6 +85,8 @@ export function TransactionsPageClient({
   const [isPending, startTransition] = useTransition();
   const [salaryBlock, setSalaryBlock] = useState<TransactionRow | null>(null);
   const [shakeRowId, setShakeRowId] = useState<string | null>(null);
+  const [incomeSelection, setIncomeSelection] = useState<RowSelectionState>({});
+  const [expenseSelection, setExpenseSelection] = useState<RowSelectionState>({});
 
   const buildUrl = (next: Partial<Filters>) => {
     const m = { ...filters, ...next };
@@ -149,8 +152,71 @@ export function TransactionsPageClient({
     setTimeout(() => setShakeRowId(null), 500);
   };
 
+  const selectColumn = (
+    selection: RowSelectionState,
+    setSelection: (value: RowSelectionState) => void,
+    rows: TransactionRow[],
+    canSelect: (row: TransactionRow) => boolean
+  ): ColumnDef<TransactionRow> => ({
+    id: "select",
+    header: () => {
+      const selectableRows = rows.filter(canSelect);
+      const allSelected =
+        selectableRows.length > 0 &&
+        selectableRows.every((row) => selection[row.id]);
+      const someSelected = selectableRows.some((row) => selection[row.id]);
+      return (
+        <input
+          type="checkbox"
+          aria-label="تحديد الكل"
+          checked={allSelected}
+          ref={(el) => {
+            if (el) el.indeterminate = someSelected && !allSelected;
+          }}
+          onChange={() => {
+            if (allSelected) {
+              setSelection({});
+              return;
+            }
+            const next: RowSelectionState = {};
+            for (const row of selectableRows) next[row.id] = true;
+            setSelection(next);
+          }}
+          className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+        />
+      );
+    },
+    cell: ({ row }) => {
+      if (!canSelect(row.original)) return null;
+      return (
+        <input
+          type="checkbox"
+          aria-label="تحديد الصف"
+          checked={Boolean(selection[row.original.id])}
+          onChange={() => {
+            setSelection({
+              ...selection,
+              [row.original.id]: !selection[row.original.id],
+            });
+          }}
+          className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+        />
+      );
+    },
+    enableSorting: false,
+  });
+
+  const selectedIncomeIds = Object.keys(incomeSelection).filter((id) => incomeSelection[id]);
+  const selectedExpenseIds = Object.keys(expenseSelection).filter((id) => expenseSelection[id]);
+
   const incomeColumns = useMemo<ColumnDef<TransactionRow>[]>(
     () => [
+      selectColumn(
+        incomeSelection,
+        setIncomeSelection,
+        incomeRows,
+        (row) => !row.salarySlipId
+      ),
       {
         accessorKey: "occurredAtLabel",
         header: ({ column }) => (
@@ -226,11 +292,12 @@ export function TransactionsPageClient({
       },
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [router, shakeRowId]
+    [router, shakeRowId, incomeSelection, incomeRows]
   );
 
   const expenseColumns = useMemo<ColumnDef<TransactionRow>[]>(
     () => [
+      selectColumn(expenseSelection, setExpenseSelection, expenseRows, () => true),
       {
         accessorKey: "occurredAtLabel",
         header: ({ column }) => (
@@ -279,7 +346,7 @@ export function TransactionsPageClient({
       },
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [router]
+    [router, expenseSelection, expenseRows]
   );
 
   const openEdit = (row: TransactionRow) => {
@@ -290,6 +357,18 @@ export function TransactionsPageClient({
   const deleteRow = (id: string) => {
     startTransition(async () => {
       await fetch(`/api/transactions/${id}`, { method: "DELETE" });
+      router.refresh();
+    });
+  };
+
+  const deleteSelected = (ids: string[], clearSelection: () => void) => {
+    if (ids.length === 0) return;
+    if (!window.confirm(`حذف ${ids.length} معاملة؟`)) return;
+    startTransition(async () => {
+      await Promise.all(
+        ids.map((id) => fetch(`/api/transactions/${id}`, { method: "DELETE" }))
+      );
+      clearSelection();
       router.refresh();
     });
   };
@@ -467,12 +546,37 @@ export function TransactionsPageClient({
           </CardTitle>
         </CardHeader>
         <CardContent className="p-2 sm:p-4">
+          {selectedIncomeIds.length > 0 && (
+            <div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2">
+              <span className="text-sm font-semibold text-rose-800">
+                {selectedIncomeIds.length} محدد
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1 border-rose-300 text-rose-700 hover:bg-rose-100"
+                onClick={() =>
+                  deleteSelected(selectedIncomeIds, () => setIncomeSelection({}))
+                }
+              >
+                <Trash2 className="h-4 w-4" />
+                حذف المحدد
+              </Button>
+            </div>
+          )}
           {incomeRows.length === 0 ? (
             <div className="p-8 text-center text-sm text-slate-500">
               لا يوجد دخل لهذه الفترة.
             </div>
           ) : (
-            <DataTable columns={incomeColumns} data={incomeRows} />
+            <DataTable
+              columns={incomeColumns}
+              data={incomeRows}
+              getRowId={(row) => row.id}
+              rowSelection={incomeSelection}
+              onRowSelectionChange={setIncomeSelection}
+              enableRowSelection={(row) => !row.original.salarySlipId}
+            />
           )}
         </CardContent>
       </Card>
@@ -515,13 +619,37 @@ export function TransactionsPageClient({
           </div>
         </CardHeader>
         <CardContent className="p-2 sm:p-4">
+          {selectedExpenseIds.length > 0 && (
+            <div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2">
+              <span className="text-sm font-semibold text-rose-800">
+                {selectedExpenseIds.length} محدد
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1 border-rose-300 text-rose-700 hover:bg-rose-100"
+                onClick={() =>
+                  deleteSelected(selectedExpenseIds, () => setExpenseSelection({}))
+                }
+              >
+                <Trash2 className="h-4 w-4" />
+                حذف المحدد
+              </Button>
+            </div>
+          )}
           {expenseRows.length === 0 ? (
             <div className="p-8 text-center text-sm text-slate-500">
               لا توجد مصروفات لهذه الفترة
               {filters.expenseCategory !== "all" ? " في هذه الفئة." : "."}
             </div>
           ) : (
-            <DataTable columns={expenseColumns} data={expenseRows} />
+            <DataTable
+              columns={expenseColumns}
+              data={expenseRows}
+              getRowId={(row) => row.id}
+              rowSelection={expenseSelection}
+              onRowSelectionChange={setExpenseSelection}
+            />
           )}
         </CardContent>
       </Card>

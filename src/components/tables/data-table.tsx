@@ -7,6 +7,9 @@ import {
   getPaginationRowModel,
   getSortedRowModel,
   useReactTable,
+  type OnChangeFn,
+  type Row,
+  type RowSelectionState,
   type SortingState,
 } from "@tanstack/react-table";
 import { useState } from "react";
@@ -23,11 +26,20 @@ import {
 export function DataTable<TData, TValue>({
   columns,
   data,
+  getRowId,
+  rowSelection,
+  onRowSelectionChange,
+  enableRowSelection,
 }: {
   columns: ColumnDef<TData, TValue>[];
   data: TData[];
+  getRowId?: (row: TData) => string;
+  rowSelection?: RowSelectionState;
+  onRowSelectionChange?: OnChangeFn<RowSelectionState>;
+  enableRowSelection?: boolean | ((row: Row<TData>) => boolean);
 }) {
   const [sorting, setSorting] = useState<SortingState>([]);
+  const selectable = Boolean(onRowSelectionChange);
 
   const table = useReactTable({
     data,
@@ -36,7 +48,13 @@ export function DataTable<TData, TValue>({
     getCoreRowModel: getCoreRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
     getSortedRowModel: getSortedRowModel(),
-    state: { sorting },
+    enableRowSelection: enableRowSelection ?? selectable,
+    getRowId: getRowId ? (row) => getRowId(row) : undefined,
+    onRowSelectionChange,
+    state: {
+      sorting,
+      ...(rowSelection !== undefined ? { rowSelection } : {}),
+    },
     initialState: {
       pagination: {
         pageSize: 10,
@@ -67,7 +85,11 @@ export function DataTable<TData, TValue>({
           <TableBody>
             {table.getRowModel().rows.length ? (
               table.getRowModel().rows.map((row) => (
-                <TableRow key={row.id}>
+                <TableRow
+                  key={row.id}
+                  data-state={row.getIsSelected() ? "selected" : undefined}
+                  className={row.getIsSelected() ? "bg-indigo-50/60" : undefined}
+                >
                   {row.getVisibleCells().map((cell) => (
                     <TableCell key={cell.id}>
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
