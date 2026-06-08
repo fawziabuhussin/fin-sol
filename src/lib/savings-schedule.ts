@@ -1,8 +1,13 @@
 import { monthLabel } from "@/lib/finance-labels";
 
-/** Last calendar day of period (UTC) — used as payment date for that month. */
+/** Last calendar day of period (UTC) — used as savings payment date for that month. */
 export function paidAtForPeriod(year: number, month: number): Date {
   return new Date(Date.UTC(year, month, 0));
+}
+
+/** First calendar day of period (UTC) — used as subscription payment date for that month. */
+export function subscriptionPaidAtForPeriod(year: number, month: number): Date {
+  return new Date(Date.UTC(year, month - 1, 1));
 }
 
 export function periodFromDate(d: Date) {

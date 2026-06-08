@@ -6,7 +6,7 @@ import {
   DEFAULT_SUBSCRIPTIONS,
 } from "@/lib/default-subscriptions";
 import { ensureSubscriptionCategoryId } from "@/lib/subscription-category";
-import { paidAtForPeriod } from "@/lib/savings-schedule";
+import { subscriptionPaidAtForPeriod } from "@/lib/savings-schedule";
 import { decimalToNumber } from "@/lib/utils";
 
 export async function markSubscriptionMonthPaid(
@@ -20,7 +20,7 @@ export async function markSubscriptionMonthPaid(
   categoryId: string,
   paymentMethodId: string | null
 ) {
-  const paidAt = paidAtForPeriod(periodYear, periodMonth);
+  const paidAt = subscriptionPaidAtForPeriod(periodYear, periodMonth);
 
   const existing = await prisma.subscriptionPayment.findUnique({
     where: {

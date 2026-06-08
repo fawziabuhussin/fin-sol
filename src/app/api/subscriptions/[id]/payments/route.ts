@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/session";
 import { handleApiError } from "@/lib/api-error";
-import { paidAtForPeriod } from "@/lib/savings-schedule";
+import { subscriptionPaidAtForPeriod } from "@/lib/savings-schedule";
 import { ensureSubscriptionCategoryId } from "@/lib/subscription-category";
 import { subscriptionPaymentSchema } from "@/lib/validations/subscriptions";
 import { decimalToNumber } from "@/lib/utils";
@@ -37,7 +37,7 @@ export async function PATCH(
     const paidAt = paid
       ? d.paidAt
         ? new Date(d.paidAt)
-        : paidAtForPeriod(d.periodYear, d.periodMonth)
+        : subscriptionPaidAtForPeriod(d.periodYear, d.periodMonth)
       : null;
 
     const existing = await prisma.subscriptionPayment.findUnique({
