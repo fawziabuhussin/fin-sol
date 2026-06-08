@@ -30,19 +30,25 @@ export async function POST(req: Request) {
       }
       const d = parsed.data;
       const liveRates = d.kind === "USD" ? await getMarketRates() : null;
-      const unitPrice =
+      const useHistoricalUsdRate =
+        d.kind === "USD" && d.unitPrice != null && d.unitPrice > 0;
+      const entryUnitPrice =
         d.kind === "USD"
-          ? liveRates!.usdIls
+          ? useHistoricalUsdRate
+            ? d.unitPrice!
+            : liveRates!.usdIls
           : (d.unitPrice ?? 0);
-      if (d.kind === "GOLD" && unitPrice <= 0) {
+      if (d.kind === "GOLD" && entryUnitPrice <= 0) {
         return NextResponse.json({ error: "Gold price required" }, { status: 400 });
       }
       const entryValueIls = computeAssetValueIls(
         d.kind,
         d.quantity,
-        unitPrice,
-        liveRates?.usdIls
+        entryUnitPrice,
+        useHistoricalUsdRate ? null : liveRates?.usdIls
       );
+      const portfolioUnitPrice =
+        d.kind === "USD" ? liveRates!.usdIls : entryUnitPrice;
       const title =
         d.title ||
         (d.kind === "GOLD" ? `ذهب ${d.goldKarat ?? 21}K` : "دولار أمريكي");
@@ -57,14 +63,14 @@ export async function POST(req: Request) {
         const newValue = computeAssetValueIls(
           d.kind,
           newQty,
-          unitPrice,
+          portfolioUnitPrice,
           liveRates?.usdIls
         );
         asset = await prisma.savingsAsset.update({
           where: { id: asset.id },
           data: {
             quantity: newQty,
-            unitPrice,
+            unitPrice: portfolioUnitPrice,
             valueIls: newValue,
             ...(d.kind === "GOLD" && d.goldKarat
               ? { goldKarat: d.goldKarat }
@@ -78,10 +84,18 @@ export async function POST(req: Request) {
             kind: d.kind,
             title,
             quantity: d.quantity,
-            unitPrice,
+            unitPrice: portfolioUnitPrice,
             goldKarat: d.kind === "GOLD" ? (d.goldKarat ?? 21) : null,
             priceCurrency: d.kind === "USD" ? "USD" : "ILS",
-            valueIls: entryValueIls,
+            valueIls:
+              d.kind === "USD"
+                ? computeAssetValueIls(
+                    d.kind,
+                    d.quantity,
+                    portfolioUnitPrice,
+                    liveRates?.usdIls
+                  )
+                : entryValueIls,
             notes: d.notes || null,
           },
         });
@@ -91,7 +105,7 @@ export async function POST(req: Request) {
         data: {
           assetId: asset.id,
           quantity: d.quantity,
-          unitPrice,
+          unitPrice: entryUnitPrice,
           valueIls: entryValueIls,
           purchasedAt: new Date(d.purchasedAt),
           notes: d.notes || null,

@@ -16,13 +16,18 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
+import { isLocalTodayDate, localTodayIso } from "@/lib/dates";
 
 export type QuickAddLookups = {
   categories: { id: string; name: string; kind: string }[];
   paymentMethods: { id: string; name: string }[];
 };
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = localTodayIso;
+
+function isPurchaseToday(purchasedAt: string) {
+  return isLocalTodayDate(purchasedAt);
+}
 
 export function QuickAddSheet({
   open,
@@ -78,7 +83,21 @@ export function QuickAddSheet({
     setDescription("");
     setOccurredAt(today());
     setPaymentMethodId("");
+    setAssetQuantity("");
+    setAssetUnitPrice("");
   }
+
+  const usdHistoricalPurchase =
+    mode === "SAVINGS_ASSET" && assetKind === "USD" && !isPurchaseToday(occurredAt);
+
+  const usdPreviewRate = usdHistoricalPurchase
+    ? Number(assetUnitPrice) || 0
+    : liveUsdIls ?? 0;
+
+  const usdPreviewValue =
+    assetKind === "USD" && assetQuantity && usdPreviewRate > 0
+      ? Math.round(Number(assetQuantity) * usdPreviewRate)
+      : null;
 
   function submit() {
     if (mode === "SAVINGS_ASSET") {
@@ -92,6 +111,12 @@ export function QuickAddSheet({
         toast.error("أدخل سعر الغرام");
         return;
       }
+      if (assetKind === "USD" && !isPurchaseToday(occurredAt)) {
+        if (!price || price <= 0) {
+          toast.error("أدخل سعر الدولار وقت الشراء");
+          return;
+        }
+      }
       startTransition(async () => {
         const res = await fetch("/api/quick-add", {
           method: "POST",
@@ -102,6 +127,9 @@ export function QuickAddSheet({
               kind: assetKind,
               quantity: qty,
               ...(assetKind === "GOLD" ? { unitPrice: price, goldKarat } : {}),
+              ...(assetKind === "USD" && !isPurchaseToday(occurredAt)
+                ? { unitPrice: price }
+                : {}),
               purchasedAt: occurredAt,
               notes: description || "",
             },
@@ -251,17 +279,51 @@ export function QuickAddSheet({
                       placeholder="1200"
                     />
                   </div>
-                  {liveUsdIls != null && (
+                  <div>
+                    <Label>تاريخ الشراء</Label>
+                    <Input
+                      type="date"
+                      value={occurredAt}
+                      onChange={(e) => {
+                        setOccurredAt(e.target.value);
+                        if (isPurchaseToday(e.target.value)) {
+                          setAssetUnitPrice("");
+                        }
+                      }}
+                    />
+                  </div>
+                  {usdHistoricalPurchase ? (
+                    <div>
+                      <Label>سعر الدولار وقت الشراء (₪/$)</Label>
+                      <Input
+                        type="number"
+                        step="0.0001"
+                        value={assetUnitPrice}
+                        onChange={(e) => setAssetUnitPrice(e.target.value)}
+                        placeholder="3.65"
+                      />
+                      <p className="mt-1.5 text-xs text-amber-700">
+                        تاريخ قديم — أدخل سعر الصرف الذي دفعته يوم الشراء
+                      </p>
+                    </div>
+                  ) : (
+                    liveUsdIls != null && (
+                      <p className="rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+                        سعر الصرف الحي: {liveUsdIls} ₪/$
+                      </p>
+                    )
+                  )}
+                  {usdPreviewValue != null && usdPreviewValue > 0 && (
                     <p className="rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
-                      سعر الصرف الحي: {liveUsdIls} ₪/$
-                      {assetQuantity && Number(assetQuantity) > 0 && (
+                      {usdHistoricalPurchase ? (
                         <>
-                          {" "}
-                          · القيمة ≈{" "}
-                          {Math.round(
-                            Number(assetQuantity) * liveUsdIls
-                          ).toLocaleString("ar-IL")}{" "}
-                          ₪
+                          سعر وقت الشراء: {usdPreviewRate} ₪/$ · القيمة ≈{" "}
+                          {usdPreviewValue.toLocaleString("ar-IL")} ₪
+                        </>
+                      ) : (
+                        <>
+                          سعر الصرف الحي: {usdPreviewRate} ₪/$ · القيمة ≈{" "}
+                          {usdPreviewValue.toLocaleString("ar-IL")} ₪
                         </>
                       )}
                     </p>
@@ -291,6 +353,15 @@ export function QuickAddSheet({
                 </div>
               )}
               {assetKind === "GOLD" && (
+                <>
+                <div>
+                  <Label>تاريخ الشراء</Label>
+                  <Input
+                    type="date"
+                    value={occurredAt}
+                    onChange={(e) => setOccurredAt(e.target.value)}
+                  />
+                </div>
                 <div>
                   <Label>العيار</Label>
                   <Select
@@ -303,15 +374,8 @@ export function QuickAddSheet({
                     <option value="24">24K</option>
                   </Select>
                 </div>
+                </>
               )}
-              <div>
-                <Label>تاريخ الشراء</Label>
-                <Input
-                  type="date"
-                  value={occurredAt}
-                  onChange={(e) => setOccurredAt(e.target.value)}
-                />
-              </div>
               <div>
                 <Label>ملاحظة</Label>
                 <Input

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isLocalTodayDate } from "@/lib/dates";
 
 export const savingsSchema = z.object({
   title: z.string().min(1).max(120),
@@ -70,6 +71,17 @@ export const savingsAssetPurchaseSchema = z
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message: "Gold requires unit price",
+        path: ["unitPrice"],
+      });
+    }
+    if (
+      data.kind === "USD" &&
+      !isLocalTodayDate(data.purchasedAt) &&
+      (data.unitPrice === undefined || data.unitPrice <= 0)
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Historical USD purchase requires exchange rate",
         path: ["unitPrice"],
       });
     }
