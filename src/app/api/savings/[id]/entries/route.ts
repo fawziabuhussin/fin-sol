@@ -152,6 +152,30 @@ export async function POST(
         i < fullMonths ? monthly : remainder > 0 ? remainder : monthly;
       if (amount <= 0) continue;
 
+      const paidAt = paidAtForPeriod(year, month);
+
+      const existing = await prisma.savingsEntry.findUnique({
+        where: {
+          planId_periodYear_periodMonth: {
+            planId,
+            periodYear: year,
+            periodMonth: month,
+          },
+        },
+      });
+
+      let transactionId = existing?.transactionId ?? null;
+      if (!transactionId) {
+        const tx = await createSavingsContributionTransaction({
+          userId: user.id,
+          planTitle: plan.title,
+          amount,
+          occurredAt: paidAt,
+          notes: `دفعة مجمّعة — ${parsed.data.totalPaid} ₪`,
+        });
+        transactionId = tx.id;
+      }
+
       const entry = await prisma.savingsEntry.upsert({
         where: {
           planId_periodYear_periodMonth: {
@@ -166,13 +190,15 @@ export async function POST(
           periodMonth: month,
           amount,
           paid: true,
-          paidAt: paidAtForPeriod(year, month),
+          paidAt,
           notes: `دفعة مجمّعة — ${parsed.data.totalPaid} ₪`,
+          transactionId,
         },
         update: {
           amount,
           paid: true,
-          paidAt: paidAtForPeriod(year, month),
+          paidAt,
+          transactionId,
         },
       });
       updated.push(entry);

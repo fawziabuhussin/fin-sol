@@ -14,6 +14,7 @@ import { paidAtForPeriod } from "@/lib/savings-schedule";
 import type { SalarySlipBreakdown } from "@/lib/payslip-types";
 import { getMarketRates } from "@/lib/market-rates";
 import { computeAssetValueIls } from "@/lib/savings-asset-value";
+import { isAssetPurchaseDescription } from "@/lib/savings-contribution";
 import {
   kupotAmountsFromSlip,
   sumKupotAmounts,
@@ -229,7 +230,7 @@ export async function getMonthlyOverview(
 ) {
   const { start, end } = monthRangeUTC(year, month);
 
-  const [transactions, salarySlips, savingsPlans, savingsEntriesPaid] =
+  const [transactions, salarySlips, savingsPlans, savingsEntriesPaid, assetEntries] =
     await Promise.all([
       prisma.transaction.findMany({
         where: { userId, occurredAt: { gte: start, lte: end } },
@@ -253,6 +254,13 @@ export async function getMonthlyOverview(
         },
         select: { planId: true, amount: true },
       }),
+      prisma.savingsAssetEntry.findMany({
+        where: {
+          asset: { userId },
+          purchasedAt: { gte: start, lte: end },
+        },
+        select: { valueIls: true },
+      }),
     ]);
 
   const incomeSources = buildIncomeSources(transactions, salarySlips);
@@ -266,11 +274,9 @@ export async function getMonthlyOverview(
     .filter((s) => s.isSalary)
     .reduce((sum, s) => sum + s.amount, 0);
 
-  const [dailyExpenses, buildExpenses, savingsContributions] =
-    await Promise.all([
+  const [dailyExpenses, buildExpenses] = await Promise.all([
       sumExpensesByBuildFlag(userId, year, month, false),
       sumExpensesByBuildFlag(userId, year, month, true),
-      sumByType(userId, year, month, TransactionType.SAVINGS_CONTRIBUTION),
     ]);
 
   const categoryMap = new Map<string, number>();
@@ -297,23 +303,33 @@ export async function getMonthlyOverview(
         planAppliesInMonth(plan, year, month) && !paidPlanIds.has(plan.id)
     )
     .reduce((sum, plan) => sum + decimalToNumber(plan.monthlyContribution), 0);
+  const jamiyaFromTransactions = transactions
+    .filter(
+      (t) =>
+        t.type === TransactionType.SAVINGS_CONTRIBUTION &&
+        !isAssetPurchaseDescription(t.description)
+    )
+    .reduce((sum, t) => sum + decimalToNumber(t.amount), 0);
   const savingsContributionsActual =
-    savingsFromEntries > 0 ? savingsFromEntries : savingsContributions;
+    savingsFromEntries > 0 ? savingsFromEntries : jamiyaFromTransactions;
   const savingsPaidThisMonth = savingsContributionsActual;
-  const savingsTotal = savingsPaidThisMonth + savingsPlanned;
-
-  const displayIncome = Math.max(0, totalIncome - savingsPaidThisMonth);
+  const assetPurchasesThisMonth = assetEntries.reduce(
+    (sum, e) => sum + decimalToNumber(e.valueIls),
+    0
+  );
+  const savingsOutflow = savingsPaidThisMonth + assetPurchasesThisMonth;
+  const savingsTotal = savingsOutflow + savingsPlanned;
 
   const undertracked = isUndertrackedExpenseMonth(year, month);
   const expenseAdjust = undertracked
-    ? adjustUndertrackedExpenses(displayIncome, totalExpenses)
+    ? adjustUndertrackedExpenses(totalIncome, totalExpenses)
     : {
         expenses: totalExpenses,
-        net: displayIncome - totalExpenses,
+        net: totalIncome - totalExpenses,
         adjusted: false,
       };
 
-  const net = expenseAdjust.net;
+  const net = expenseAdjust.net - savingsOutflow;
   const netAfterSavings = net - savingsPlanned;
   const hasIncomeNoExpenses = totalIncome > 0 && totalExpenses === 0;
 
@@ -326,7 +342,7 @@ export async function getMonthlyOverview(
     hasIncomeNoExpenses,
     income: {
       sources: incomeSources,
-      total: displayIncome,
+      total: totalIncome,
       grossTotal: totalIncome,
       salary: salaryAmount,
       savingsExcluded: savingsIncomeExcluded,
@@ -342,6 +358,8 @@ export async function getMonthlyOverview(
     },
     savings: {
       contributions: savingsPaidThisMonth,
+      assetsPurchased: assetPurchasesThisMonth,
+      outflow: savingsOutflow,
       paid: savingsPaidThisMonth,
       planned: savingsPlanned,
       total: savingsTotal,
@@ -524,7 +542,8 @@ function formatInsightAmount(n: number) {
 }
 
 export async function getAnnualShowcaseData(userId: string, year: number) {
-  const [months, masterBuild, savingsPlans, salarySlips] = await Promise.all([
+  const [months, masterBuild, savingsPlans, salarySlips, savingsSummary] =
+    await Promise.all([
     Promise.all(
       Array.from({ length: 12 }, (_, i) =>
         getMonthlyOverview(userId, year, i + 1)
@@ -536,6 +555,7 @@ export async function getAnnualShowcaseData(userId: string, year: number) {
     }),
     listSavings(userId),
     listSalary(userId),
+    getSavingsSummary(userId),
   ]);
 
   const throughMonth = reportThroughMonth(year);
@@ -550,9 +570,11 @@ export async function getAnnualShowcaseData(userId: string, year: number) {
     undertracked: m.undertracked,
     daily: m.expenses.daily,
     build: m.expenses.build,
-    savings: m.savings.total,
+    savings: m.savings.outflow,
     savingsContributions: m.savings.contributions,
+    savingsAssetsPurchased: m.savings.assetsPurchased,
     savingsPlanned: m.savings.planned,
+    savingsTotalWithPlanned: m.savings.total,
     net: m.net,
     netAfterSavings: m.netAfterSavings,
     hasActivity:
@@ -716,6 +738,13 @@ export async function getAnnualShowcaseData(userId: string, year: number) {
     insights,
     buildingProjectId: masterBuild?.id ?? null,
     activeMonthsCount: activeMonths.length,
+    portfolio: {
+      jamiyaPaidTotal: savingsSummary.summary.jamiyaPaidTotal,
+      goldTotal: savingsSummary.summary.goldTotal,
+      usdTotal: savingsSummary.summary.usdTotal,
+      assetsTotal: savingsSummary.summary.assetsTotal,
+      accumulatedTotal: savingsSummary.summary.accumulatedTotal,
+    },
   };
 }
 

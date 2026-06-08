@@ -143,6 +143,7 @@ model Transaction {
   salarySlip     SalarySlip?          @relation(fields: [salarySlipId], references: [id], onDelete: Cascade)
   installment           ProjectInstallment?
   savingsEntry          SavingsEntry?
+  savingsAssetEntry     SavingsAssetEntry?
   subscriptionPayment   SubscriptionPayment?
 
   @@index([userId, occurredAt])
@@ -341,16 +342,18 @@ model SavingsAsset {
 }
 
 model SavingsAssetEntry {
-  id          String   @id @default(cuid())
-  assetId     String
-  quantity    Decimal  @db.Decimal(14, 4)
-  unitPrice   Decimal  @db.Decimal(14, 4)
-  valueIls    Decimal  @db.Decimal(14, 2)
-  purchasedAt DateTime @db.Date
-  notes       String?
-  createdAt   DateTime @default(now())
+  id            String   @id @default(cuid())
+  assetId       String
+  quantity      Decimal  @db.Decimal(14, 4)
+  unitPrice     Decimal  @db.Decimal(14, 4)
+  valueIls      Decimal  @db.Decimal(14, 2)
+  purchasedAt   DateTime @db.Date
+  notes         String?
+  transactionId String?  @unique
+  createdAt     DateTime @default(now())
 
-  asset SavingsAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  asset       SavingsAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  transaction Transaction? @relation(fields: [transactionId], references: [id], onDelete: SetNull)
 
   @@index([assetId, purchasedAt])
 }

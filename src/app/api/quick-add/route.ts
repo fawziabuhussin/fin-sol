@@ -6,6 +6,7 @@ import { projectSchema } from "@/lib/validations/projects";
 import { savingsAssetPurchaseSchema } from "@/lib/validations/savings";
 import { getMarketRates } from "@/lib/market-rates";
 import { computeAssetValueIls } from "@/lib/savings-asset-value";
+import { createAssetPurchaseTransaction } from "@/lib/savings-contribution";
 
 const quickAddSchema = {
   TRANSACTION: transactionSchema,
@@ -97,7 +98,19 @@ export async function POST(req: Request) {
         },
       });
 
-      return NextResponse.json({ asset, entry }, { status: 201 });
+      const tx = await createAssetPurchaseTransaction({
+        userId: user.id,
+        kind: d.kind,
+        amount: entryValueIls,
+        occurredAt: new Date(d.purchasedAt),
+        notes: d.notes ?? null,
+      });
+      await prisma.savingsAssetEntry.update({
+        where: { id: entry.id },
+        data: { transactionId: tx.id },
+      });
+
+      return NextResponse.json({ asset, entry, transaction: tx }, { status: 201 });
     }
 
     if (body.kind === "TRANSACTION") {

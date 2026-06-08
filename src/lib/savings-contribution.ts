@@ -39,3 +39,31 @@ export async function createSavingsContributionTransaction(params: {
     },
   });
 }
+
+export async function createAssetPurchaseTransaction(params: {
+  userId: string;
+  kind: "GOLD" | "USD";
+  amount: number;
+  occurredAt: Date;
+  notes?: string | null;
+}) {
+  const label = params.kind === "USD" ? "دولار" : "ذهب";
+  const categoryId = await ensureSavingsCategoryId(params.userId);
+  return prisma.transaction.create({
+    data: {
+      userId: params.userId,
+      type: TransactionType.SAVINGS_CONTRIBUTION,
+      amount: params.amount,
+      occurredAt: params.occurredAt,
+      categoryId,
+      description: `ادخار — ${label}`,
+      notes: params.notes ?? null,
+      currency: "ILS",
+    },
+  });
+}
+
+export function isAssetPurchaseDescription(description: string | null | undefined) {
+  if (!description) return false;
+  return /ادخار — (دولار|ذهب)/.test(description);
+}

@@ -332,7 +332,25 @@ export function TransactionsPageClient({
       },
       { accessorKey: "categoryName", header: "الفئة" },
       { accessorKey: "projectName", header: "المشروع" },
-      { accessorKey: "description", header: "الوصف" },
+      {
+        accessorKey: "description",
+        header: "الوصف",
+        cell: ({ row }) => (
+          <div className="flex flex-wrap items-center gap-2">
+            <span>{row.original.description}</span>
+            {row.original.description?.includes("دولار") && (
+              <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+                $
+              </span>
+            )}
+            {row.original.description?.includes("ذهب") && (
+              <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+                Au
+              </span>
+            )}
+          </div>
+        ),
+      },
       { accessorKey: "paymentMethodName", header: "الدفع" },
       {
         id: "actions",

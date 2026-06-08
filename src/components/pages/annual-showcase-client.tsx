@@ -52,6 +52,13 @@ export type AnnualShowcaseData = {
     net: number;
     netAfterSavings: number;
   };
+  portfolio: {
+    jamiyaPaidTotal: number;
+    goldTotal: number;
+    usdTotal: number;
+    assetsTotal: number;
+    accumulatedTotal: number;
+  };
   yearForecast: {
     throughMonth: number;
     remainingMonths: number;
@@ -81,7 +88,9 @@ export type AnnualShowcaseData = {
     build: number;
     savings: number;
     savingsContributions: number;
+    savingsAssetsPurchased: number;
     savingsPlanned: number;
+    savingsTotalWithPlanned: number;
     net: number;
     netAfterSavings: number;
     hasActivity: boolean;
@@ -150,7 +159,7 @@ const INSIGHT_STYLES = {
 
 export function AnnualShowcaseClient({ data }: { data: AnnualShowcaseData }) {
   const router = useRouter();
-  const { year, totals } = data;
+  const { year, totals, portfolio } = data;
   const netPositive = totals.net >= 0;
 
   const chartData = data.monthly.map((m) => ({
@@ -167,7 +176,8 @@ export function AnnualShowcaseClient({ data }: { data: AnnualShowcaseData }) {
     name: m.label.slice(0, 3),
     fullLabel: m.label,
     planned: m.savingsPlanned,
-    recorded: m.savingsContributions,
+    jamiya: m.savingsContributions,
+    assets: m.savingsAssetsPurchased,
     total: m.savings,
   }));
 
@@ -241,7 +251,12 @@ export function AnnualShowcaseClient({ data }: { data: AnnualShowcaseData }) {
             { label: "الراتب", value: totals.salary, color: "text-blue-200" },
             { label: "يومي", value: totals.daily, color: "text-slate-200" },
             { label: "بناء", value: totals.build, color: "text-amber-200" },
-            { label: "ادخار", value: totals.savings, color: "text-violet-200" },
+            {
+              label: "ادخار",
+              value: portfolio.accumulatedTotal,
+              color: "text-violet-200",
+              sub: `${formatCurrency(portfolio.jamiyaPaidTotal)} جمعية · ${formatCurrency(portfolio.goldTotal)} ذهب · ${formatCurrency(portfolio.usdTotal)} $`,
+            },
           ].map((kpi) => (
             <div
               key={kpi.label}
@@ -251,6 +266,11 @@ export function AnnualShowcaseClient({ data }: { data: AnnualShowcaseData }) {
               <p className={`text-sm font-extrabold sm:text-base ${kpi.color}`}>
                 {formatCurrency(kpi.value)}
               </p>
+              {"sub" in kpi && kpi.sub && (
+                <p className="mt-0.5 text-[9px] leading-tight text-indigo-200/80 sm:text-[10px]">
+                  {kpi.sub}
+                </p>
+              )}
             </div>
           ))}
         </div>
@@ -301,8 +321,9 @@ export function AnnualShowcaseClient({ data }: { data: AnnualShowcaseData }) {
             </tbody>
           </table>
           <p className="mt-3 text-xs text-slate-500 leading-relaxed">
-            الصافي يخصم الادخار (جمعية وخطط نشطة). الأشهر يناير–مارس: المصروفات
-            مقدّرة (~97% من الدخل) لأن التتبع لم يكن مكتملاً والمال كان مُنفَقاً فعلياً.
+            الصافي يخصم الادخار المدفوع (جمعية، ذهب، دولار). الأشهر يناير–مارس:
+            المصروفات مقدّرة (~97% من الدخل) لأن التتبع لم يكن مكتملاً والمال كان
+            مُنفَقاً فعلياً.
           </p>
         </CardContent>
       </Card>
@@ -451,7 +472,7 @@ export function AnnualShowcaseClient({ data }: { data: AnnualShowcaseData }) {
               الادخار والجمعية — شهرياً
             </CardTitle>
             <p className="text-xs text-slate-500">
-              مساهمات مسجّلة + التزامات الخطط النشطة (ليست دخلاً)
+              مساهمات جمعية + مشتريات ذهب/دولار + التزامات الخطط النشطة
             </p>
           </CardHeader>
           <CardContent className="h-72">
@@ -467,8 +488,9 @@ export function AnnualShowcaseClient({ data }: { data: AnnualShowcaseData }) {
                   }
                 />
                 <Legend />
-                <Bar dataKey="planned" name="التزام شهري" fill="#a78bfa" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="recorded" name="مسجّل في المعاملات" fill="#7c3aed" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="planned" name="التزام شهري" fill="#a78bfa" radius={[4, 4, 0, 0]} stackId="savings" />
+                <Bar dataKey="jamiya" name="جمعية" fill="#7c3aed" radius={[4, 4, 0, 0]} stackId="savings" />
+                <Bar dataKey="assets" name="ذهب/دولار" fill="#f59e0b" radius={[4, 4, 0, 0]} stackId="savings" />
               </BarChart>
             </ResponsiveContainer>
           </CardContent>
@@ -568,7 +590,17 @@ export function AnnualShowcaseClient({ data }: { data: AnnualShowcaseData }) {
                     {m.build > 0 ? formatCurrency(m.build) : "—"}
                   </td>
                   <td className="py-3 text-violet-700">
-                    {m.savings > 0 ? formatCurrency(m.savings) : "—"}
+                    {m.savings > 0 ? (
+                      <span title={
+                        m.savingsAssetsPurchased > 0
+                          ? `جمعية ${formatCurrency(m.savingsContributions)} · أصول ${formatCurrency(m.savingsAssetsPurchased)}`
+                          : undefined
+                      }>
+                        {formatCurrency(m.savings)}
+                      </span>
+                    ) : (
+                      "—"
+                    )}
                   </td>
                   <td className="py-3 pl-2">
                     <span

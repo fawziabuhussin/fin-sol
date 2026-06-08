@@ -38,7 +38,9 @@ type Overview = {
       amount: number;
     }[];
     total: number;
+    grossTotal?: number;
     salary: number;
+    savingsDeducted?: number;
   };
   expenses: {
     daily: number;
@@ -48,6 +50,8 @@ type Overview = {
   };
   savings: {
     contributions: number;
+    assetsPurchased?: number;
+    outflow?: number;
     plans: {
       id: string;
       title: string;
@@ -243,6 +247,15 @@ export function MonthlyDashboard({
             <p className="mt-2 text-xs text-blue-100 sm:text-sm">
               دخل {formatCurrency(overview.income.total)} − مصروفات{" "}
               {formatCurrency(overview.expenses.total)}
+              {(overview.savings.outflow ?? overview.savings.contributions) > 0 && (
+                <>
+                  {" "}
+                  − ادخار{" "}
+                  {formatCurrency(
+                    overview.savings.outflow ?? overview.savings.contributions
+                  )}
+                </>
+              )}
             </p>
           </div>
           <div className="grid grid-cols-2 gap-3 sm:gap-4">
@@ -315,6 +328,14 @@ export function MonthlyDashboard({
                 </p>
               </div>
             ))}
+            {(overview.income.savingsDeducted ?? 0) > 0 && (
+              <div className="flex items-center justify-between rounded-2xl border border-violet-200 bg-violet-50 px-4 py-3 text-violet-900">
+                <span className="font-medium">خصم ادخار/جمعية</span>
+                <span className="text-lg font-extrabold">
+                  −{formatCurrency(overview.income.savingsDeducted!)}
+                </span>
+              </div>
+            )}
             <div className="flex items-center justify-between rounded-2xl bg-emerald-600 px-4 py-3 text-white">
               <span className="font-bold">إجمالي الدخل</span>
               <span className="text-xl font-extrabold">
@@ -454,12 +475,20 @@ export function MonthlyDashboard({
               );
             })
           )}
-          {overview.savings.contributions > 0 && (
+          {(overview.savings.outflow ?? overview.savings.contributions) > 0 && (
             <div className="flex flex-col justify-center rounded-2xl border border-violet-200 bg-violet-600 p-4 text-white sm:col-span-2 lg:col-span-1">
-              <p className="text-sm text-violet-100">مساهمات هذا الشهر</p>
+              <p className="text-sm text-violet-100">ادخار هذا الشهر</p>
               <p className="text-2xl font-extrabold">
-                {formatCurrency(overview.savings.contributions)}
+                {formatCurrency(
+                  overview.savings.outflow ?? overview.savings.contributions
+                )}
               </p>
+              {(overview.savings.assetsPurchased ?? 0) > 0 && (
+                <p className="mt-1 text-xs text-violet-200">
+                  جمعية {formatCurrency(overview.savings.contributions)} · أصول{" "}
+                  {formatCurrency(overview.savings.assetsPurchased!)}
+                </p>
+              )}
             </div>
           )}
         </CardContent>
