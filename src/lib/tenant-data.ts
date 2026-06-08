@@ -417,7 +417,7 @@ export async function getYearlyTrend(userId: string, year: number) {
     expenses: m.expenses.effective,
     expensesRaw: m.expenses.total,
     expensesAdjusted: m.expenses.adjusted,
-    savings: m.savings.total,
+    savings: m.savings.outflow,
     net: m.net,
     netAfterSavings: m.netAfterSavings,
     salary: m.income.salary,
