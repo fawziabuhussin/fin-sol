@@ -160,20 +160,29 @@ export function QuickAddSheet({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent>
-        <SheetHeader>
-          <SheetTitle className="flex items-center gap-2">
-            <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-indigo-100 text-indigo-700">
-              <Coffee className="h-4 w-4" />
-            </span>
-            إضافة سريعة
-          </SheetTitle>
-          <SheetDescription>
-            مصاريف يومية بسيطة (قهوة، مشتريات اليوم...). للمشاريع استخدم صفحة المشاريع.
-          </SheetDescription>
-        </SheetHeader>
+      <SheetContent className="flex flex-col overflow-hidden p-0">
+        <form
+          className="flex min-h-0 flex-1 flex-col"
+          onSubmit={(e) => {
+            e.preventDefault();
+            submit();
+          }}
+        >
+          <div className="shrink-0 border-b border-slate-100 px-6 pb-4 pt-6">
+            <SheetHeader className="mb-0">
+              <SheetTitle className="flex items-center gap-2">
+                <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-indigo-100 text-indigo-700">
+                  <Coffee className="h-4 w-4" />
+                </span>
+                إضافة سريعة
+              </SheetTitle>
+              <SheetDescription>
+                مصاريف يومية بسيطة (قهوة، مشتريات اليوم...). للمشاريع استخدم صفحة المشاريع.
+              </SheetDescription>
+            </SheetHeader>
+          </div>
 
-        <div className="mt-6 space-y-5">
+          <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-6 py-5">
           {/* Mode: transaction vs savings asset */}
           <div className="grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1">
             <button
@@ -432,16 +441,21 @@ export function QuickAddSheet({
           </div>
             </>
           )}
+          </div>
 
-          <div className="flex justify-end gap-2 pt-1">
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+          <div className="flex shrink-0 items-center justify-end gap-2 border-t border-slate-100 bg-white px-6 py-4">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+            >
               إلغاء
             </Button>
-            <Button type="button" disabled={isPending} onClick={submit}>
+            <Button type="submit" disabled={isPending}>
               {isPending ? "جاري الحفظ..." : "حفظ"}
             </Button>
           </div>
-        </div>
+        </form>
       </SheetContent>
     </Sheet>
   );
