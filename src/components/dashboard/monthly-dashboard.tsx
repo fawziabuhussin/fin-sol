@@ -132,6 +132,7 @@ export function MonthlyDashboard({
   availableMonths,
   expenseMonths = [],
   buildingProjectId = null,
+  totalSavingsExclKupot = 0,
   year,
   month,
 }: {
@@ -140,6 +141,7 @@ export function MonthlyDashboard({
   availableMonths: number[];
   expenseMonths?: number[];
   buildingProjectId?: string | null;
+  totalSavingsExclKupot?: number;
   year: number;
   month: number;
 }) {
@@ -151,25 +153,23 @@ export function MonthlyDashboard({
 
   const expenseTx = overview.transactions.filter((t) => t.type === "EXPENSE");
 
-  const cumulative = useMemo(() => {
-    return trend
-      .filter((m) => m.month <= month)
-      .reduce(
-        (acc, m) => ({
-          income: acc.income + m.income,
-          expenses: acc.expenses + m.expenses,
-          savings: acc.savings + (m.savings ?? 0),
-          net: acc.net + m.net,
-          salary: acc.salary + m.salary,
-        }),
-        { income: 0, expenses: 0, savings: 0, net: 0, salary: 0 }
-      );
-  }, [trend, month]);
+  const priorCumulativeNet = useMemo(
+    () =>
+      trend
+        .filter((m) => m.month < month)
+        .reduce((sum, m) => sum + m.net, 0),
+    [trend, month]
+  );
 
-  const cumulativeRatio =
-    cumulative.income > 0
-      ? Math.round((cumulative.expenses / cumulative.income) * 100)
+  const priorMonthLabel = month > 1 ? AR_MONTHS[month - 2] : null;
+
+  const incomeRatio =
+    overview.income.total > 0
+      ? Math.round((overview.expenses.total / overview.income.total) * 100)
       : 0;
+
+  const monthSavings =
+    overview.savings.outflow ?? overview.savings.contributions;
 
   return (
     <motion.div
@@ -180,13 +180,10 @@ export function MonthlyDashboard({
     >
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="text-sm font-medium text-slate-500">لوحة التحكم</p>
+          <p className="text-sm font-medium text-slate-500">التلخيص الشهري</p>
           <h1 className="text-2xl font-extrabold text-slate-900 sm:text-3xl">
-            {year}
+            {overview.monthLabel} {year}
           </h1>
-          <p className="mt-1 text-sm text-slate-500">
-            تراكمي حتى {overview.monthLabel} · تفاصيل {overview.monthLabel}
-          </p>
         </div>
         <div className="grid grid-cols-2 gap-2 sm:flex sm:gap-2">
           <Button
@@ -258,46 +255,50 @@ export function MonthlyDashboard({
         <div className="pointer-events-none absolute -bottom-10 -right-10 h-40 w-40 rounded-full bg-indigo-300/20 blur-3xl" />
         <div className="relative flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <p className="mb-1 flex items-center gap-2 text-sm text-blue-100">
-              <PiggyBank className="h-4 w-4" />
-              الصافي التراكمي
-              {month > 1 && (
-                <span className="rounded-full bg-white/15 px-2 py-0.5 text-[10px] font-medium">
-                  يناير – {overview.monthLabel}
-                </span>
+            <div className="flex flex-wrap items-end gap-6 sm:gap-10">
+              <div>
+                <p className="mb-1 flex items-center gap-2 text-sm text-blue-100">
+                  <PiggyBank className="h-4 w-4" />
+                  الصافي الشهري
+                </p>
+                <p className="text-3xl font-extrabold tracking-tight sm:text-5xl">
+                  {formatCurrency(overview.net)}
+                </p>
+              </div>
+              {month > 1 && priorMonthLabel && (
+                <div>
+                  <p className="mb-1 text-sm text-blue-100/90">
+                    تراكمي حتى {priorMonthLabel}
+                  </p>
+                  <p className="text-2xl font-extrabold tracking-tight text-blue-50 sm:text-3xl">
+                    {formatCurrency(priorCumulativeNet)}
+                  </p>
+                </div>
               )}
-            </p>
-            <p className="text-3xl font-extrabold tracking-tight sm:text-5xl">
-              {formatCurrency(cumulative.net)}
-            </p>
+            </div>
             <p className="mt-2 text-xs text-blue-100 sm:text-sm">
-              دخل {formatCurrency(cumulative.income)} − مصروفات{" "}
-              {formatCurrency(cumulative.expenses)}
-              {cumulative.savings > 0 && (
-                <> − ادخار {formatCurrency(cumulative.savings)}</>
-              )}
-            </p>
-            <p className="mt-2 inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-xs text-blue-50">
-              <span>هذا الشهر ({overview.monthLabel}):</span>
-              <span className="font-bold">{formatCurrency(overview.net)}</span>
+              دخل {formatCurrency(overview.income.total)} − مصروفات{" "}
+              {formatCurrency(overview.expenses.total)}
+              {monthSavings > 0 && <> − ادخار {formatCurrency(monthSavings)}</>}
             </p>
           </div>
-          <div className="grid grid-cols-2 gap-3 sm:gap-4">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4">
             <div className="rounded-2xl bg-white/15 px-4 py-3 backdrop-blur-sm">
-              <p className="text-xs text-blue-100">الراتب (تراكمي)</p>
+              <p className="text-xs text-blue-100">الراتب</p>
               <p className="text-lg font-bold">
-                {formatCurrency(cumulative.salary)}
+                {formatCurrency(overview.income.salary)}
               </p>
-              {month > 1 && overview.income.salary > 0 && (
-                <p className="mt-0.5 text-[10px] text-blue-200">
-                  {overview.monthLabel}: {formatCurrency(overview.income.salary)}
-                </p>
-              )}
             </div>
             <div className="rounded-2xl bg-white/15 px-4 py-3 backdrop-blur-sm">
               <p className="text-xs text-blue-100">نسبة المصروفات</p>
-              <p className="text-lg font-bold">{cumulativeRatio}%</p>
-              <p className="mt-0.5 text-[10px] text-blue-200">تراكمي</p>
+              <p className="text-lg font-bold">{incomeRatio}%</p>
+            </div>
+            <div className="col-span-2 rounded-2xl bg-white/15 px-4 py-3 backdrop-blur-sm sm:col-span-1">
+              <p className="text-xs text-blue-100">إجمالي الادخار</p>
+              <p className="text-xs text-blue-200/80">بدون קופות</p>
+              <p className="text-lg font-bold">
+                {formatCurrency(totalSavingsExclKupot)}
+              </p>
             </div>
           </div>
         </div>
@@ -308,7 +309,7 @@ export function MonthlyDashboard({
           <CardHeader className="border-b border-emerald-100 bg-gradient-to-l from-emerald-50 to-white">
             <CardTitle className="flex items-center gap-2 text-emerald-800">
               <ArrowDownLeft className="h-5 w-5" />
-              الدخل — {overview.monthLabel}
+              الدخل — مصادر الدخل
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3 p-4 sm:p-6">
@@ -379,7 +380,7 @@ export function MonthlyDashboard({
           <CardHeader className="border-b border-rose-100 bg-gradient-to-l from-rose-50 to-white">
             <CardTitle className="flex items-center gap-2 text-rose-800">
               <ArrowUpRight className="h-5 w-5" />
-              المصروفات — {overview.monthLabel}
+              المصروفات — Outcome
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3 p-4 sm:p-6">

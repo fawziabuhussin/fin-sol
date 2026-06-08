@@ -23,6 +23,7 @@ export default async function DashboardPage({
       availableMonths={data.availableMonths}
       expenseMonths={data.expenseMonths}
       buildingProjectId={data.buildingProjectId}
+      totalSavingsExclKupot={data.totalSavingsExclKupot}
       year={data.year}
       month={data.month}
     />

@@ -754,7 +754,7 @@ export async function getDashboardData(
   month?: number
 ) {
   const resolvedMonth = await resolveDashboardMonth(userId, year, month);
-  const [overview, trend, availableMonths, expenseMonths, masterBuild] =
+  const [overview, trend, availableMonths, expenseMonths, masterBuild, savingsSummary] =
     await Promise.all([
     getMonthlyOverview(userId, year, resolvedMonth),
     getYearlyTrend(userId, year),
@@ -764,6 +764,7 @@ export async function getDashboardData(
       where: { userId, kind: ProjectKind.MASTER_BUILD },
       select: { id: true },
     }),
+    getSavingsSummary(userId),
   ]);
 
   return {
@@ -772,6 +773,7 @@ export async function getDashboardData(
     availableMonths,
     expenseMonths,
     buildingProjectId: masterBuild?.id ?? null,
+    totalSavingsExclKupot: savingsSummary.summary.accumulatedTotal,
     year,
     month: resolvedMonth,
   };
