@@ -295,7 +295,9 @@ export function MonthlyDashboard({
             </div>
             <div className="col-span-2 rounded-2xl bg-white/15 px-4 py-3 backdrop-blur-sm sm:col-span-1">
               <p className="text-xs text-blue-100">إجمالي الادخار</p>
-              <p className="text-xs text-blue-200/80">بدون קופות</p>
+              <p className="text-xs text-blue-200/80">
+                تراكمي حتى {overview.monthLabel} · بدون קופות
+              </p>
               <p className="text-lg font-bold">
                 {formatCurrency(totalSavingsExclKupot)}
               </p>

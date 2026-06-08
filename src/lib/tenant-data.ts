@@ -764,7 +764,10 @@ export async function getDashboardData(
       where: { userId, kind: ProjectKind.MASTER_BUILD },
       select: { id: true },
     }),
-    getSavingsSummary(userId),
+    getSavingsSummary(userId, {
+      throughYear: year,
+      throughMonth: resolvedMonth,
+    }),
   ]);
 
   return {
@@ -1510,7 +1513,29 @@ export async function listSavings(userId: string) {
   });
 }
 
-export async function getSavingsSummary(userId: string) {
+function isPeriodOnOrBefore(
+  periodYear: number,
+  periodMonth: number,
+  throughYear: number,
+  throughMonth: number
+) {
+  return (
+    periodYear < throughYear ||
+    (periodYear === throughYear && periodMonth <= throughMonth)
+  );
+}
+
+export async function getSavingsSummary(
+  userId: string,
+  options?: { throughYear?: number; throughMonth?: number }
+) {
+  const throughYear = options?.throughYear;
+  const throughMonth = options?.throughMonth;
+  const throughEnd =
+    throughYear != null && throughMonth != null
+      ? monthRangeUTC(throughYear, throughMonth).end
+      : null;
+
   const marketRates = await getMarketRates(21).catch(() => null);
   const liveUsdIls = marketRates?.usdIls ?? null;
 
@@ -1538,7 +1563,16 @@ export async function getSavingsSummary(userId: string) {
     const monthly = decimalToNumber(plan.monthlyContribution);
     const target = plan.targetAmount ? decimalToNumber(plan.targetAmount) : null;
     const paid = plan.entries
-      .filter((e) => e.paid)
+      .filter((e) => {
+        if (!e.paid) return false;
+        if (throughYear == null || throughMonth == null) return true;
+        return isPeriodOnOrBefore(
+          e.periodYear,
+          e.periodMonth,
+          throughYear,
+          throughMonth
+        );
+      })
       .reduce((sum, e) => sum + decimalToNumber(e.amount), 0);
 
     jamiyaPaidTotal += paid;
@@ -1605,12 +1639,27 @@ export async function getSavingsSummary(userId: string) {
     };
   });
 
-  const goldTotal = assetItems
-    .filter((a) => a.kind === "GOLD")
-    .reduce((sum, a) => sum + a.valueIls, 0);
-  const usdTotal = assetItems
-    .filter((a) => a.kind === "USD")
-    .reduce((sum, a) => sum + a.valueIls, 0);
+  let goldTotal: number;
+  let usdTotal: number;
+  if (throughEnd) {
+    goldTotal = 0;
+    usdTotal = 0;
+    for (const asset of assets) {
+      for (const entry of asset.entries) {
+        if (entry.purchasedAt > throughEnd) continue;
+        const value = decimalToNumber(entry.valueIls);
+        if (asset.kind === "GOLD") goldTotal += value;
+        else usdTotal += value;
+      }
+    }
+  } else {
+    goldTotal = assetItems
+      .filter((a) => a.kind === "GOLD")
+      .reduce((sum, a) => sum + a.valueIls, 0);
+    usdTotal = assetItems
+      .filter((a) => a.kind === "USD")
+      .reduce((sum, a) => sum + a.valueIls, 0);
+  }
   const assetsTotal = goldTotal + usdTotal;
   const accumulatedTotal = jamiyaPaidTotal + assetsTotal;
   const remainingToPay = Math.max(0, committedTotal - jamiyaPaidTotal);
