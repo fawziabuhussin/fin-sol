@@ -33,6 +33,12 @@ export async function PATCH(
 
     return NextResponse.json(entry);
   } catch (error) {
+    if (error instanceof Error && error.message === "INSUFFICIENT_BALANCE") {
+      return NextResponse.json(
+        { error: "الكمية أكبر من الرصيد المتاح" },
+        { status: 400 }
+      );
+    }
     return handleApiError(error);
   }
 }

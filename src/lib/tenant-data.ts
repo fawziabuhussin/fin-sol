@@ -1623,11 +1623,13 @@ export async function getSavingsSummary(
       history: asset.entries.map((e) => {
         const entryQty = decimalToNumber(e.quantity);
         const entryUnitPrice = decimalToNumber(e.unitPrice);
+        const entryValue = decimalToNumber(e.valueIls);
         return {
           id: e.id,
-          quantity: entryQty,
+          type: entryQty < 0 ? ("WITHDRAWAL" as const) : ("PURCHASE" as const),
+          quantity: Math.abs(entryQty),
           unitPrice: entryUnitPrice,
-          valueIls: decimalToNumber(e.valueIls),
+          valueIls: Math.abs(entryValue),
           purchasedAt: e.purchasedAt.toISOString().slice(0, 10),
           notes: e.notes,
         };

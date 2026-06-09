@@ -18,6 +18,8 @@ import {
   YAxis,
 } from "recharts";
 import {
+  ArrowDownLeft,
+  ArrowUpRight,
   Coins,
   DollarSign,
   Pencil,
@@ -86,6 +88,7 @@ export type SavingsSummaryData = {
     updatedAt: string;
     history?: {
       id: string;
+      type: "PURCHASE" | "WITHDRAWAL";
       quantity: number;
       unitPrice: number;
       valueIls: number;
@@ -128,24 +131,25 @@ function applyLiveUsdToAssets(
   });
 }
 
-type PurchaseHistoryRow = NonNullable<
+type AssetHistoryRow = NonNullable<
   SavingsSummaryData["assets"][number]["history"]
 >[number];
 
-function PurchaseRow({
+function AssetEntryRow({
   assetId,
   entry,
   isGold,
   unitLabel,
 }: {
   assetId: string;
-  entry: PurchaseHistoryRow;
+  entry: AssetHistoryRow;
   isGold: boolean;
   unitLabel: string;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [editing, setEditing] = useState(false);
+  const isWithdrawal = entry.type === "WITHDRAWAL";
   const [form, setForm] = useState({
     quantity: entry.quantity,
     purchasedAt: entry.purchasedAt,
@@ -167,17 +171,19 @@ function PurchaseRow({
         }
       );
       if (!res.ok) {
-        toast.error("فشل التعديل");
+        const data = await res.json().catch(() => ({}));
+        toast.error(data.error ?? "فشل التعديل");
         return;
       }
-      toast.success("تم تعديل الشراء");
+      toast.success(isWithdrawal ? "تم تعديل السحب" : "تم تعديل الشراء");
       setEditing(false);
       router.refresh();
     });
   };
 
   const remove = () => {
-    if (!confirm("حذف هذا الشراء من السجل؟")) return;
+    if (!confirm(isWithdrawal ? "حذف هذا السحب من السجل؟" : "حذف هذا الشراء من السجل؟"))
+      return;
     startTransition(async () => {
       const res = await fetch(
         `/api/savings/assets/${assetId}/entries/${entry.id}`,
@@ -187,7 +193,7 @@ function PurchaseRow({
         toast.error("فشل الحذف");
         return;
       }
-      toast.success("تم حذف الشراء");
+      toast.success(isWithdrawal ? "تم حذف السحب" : "تم حذف الشراء");
       router.refresh();
     });
   };
@@ -248,14 +254,31 @@ function PurchaseRow({
   }
 
   return (
-    <div className="flex items-center gap-2 rounded-lg px-1 py-1.5 text-xs hover:bg-white/60">
-      <div className="min-w-0 flex-1 text-slate-600">
-        <span>
-          {entry.purchasedAt} · {entry.quantity}
-          {unitLabel}
+    <div
+      className={`flex items-center gap-2 rounded-lg px-1 py-1.5 text-xs hover:bg-white/60 ${
+        isWithdrawal ? "text-red-700" : ""
+      }`}
+    >
+      <div className="min-w-0 flex-1">
+        <span className="flex items-center gap-1">
+          {isWithdrawal ? (
+            <ArrowUpRight className="h-3 w-3 shrink-0 text-red-500" />
+          ) : (
+            <ArrowDownLeft className="h-3 w-3 shrink-0 text-emerald-500" />
+          )}
+          <span>
+            {entry.purchasedAt} · {isWithdrawal ? "−" : "+"}
+            {entry.quantity}
+            {unitLabel}
+          </span>
         </span>
       </div>
-      <span className="shrink-0 font-semibold text-slate-800">
+      <span
+        className={`shrink-0 font-semibold ${
+          isWithdrawal ? "text-red-700" : "text-slate-800"
+        }`}
+      >
+        {isWithdrawal ? "−" : ""}
         {formatCurrency(entry.valueIls)}
       </span>
       <button
@@ -294,7 +317,7 @@ function AssetCard({
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [goldKarat, setGoldKarat] = useState(asset.goldKarat ?? 21);
-  const [showAdd, setShowAdd] = useState(false);
+  const [addMode, setAddMode] = useState<"PURCHASE" | "WITHDRAWAL" | null>(null);
   const [addForm, setAddForm] = useState({
     quantity: 0,
     purchasedAt: localTodayIso(),
@@ -307,7 +330,11 @@ function AssetCard({
   const unitLabel = isGold ? " غ" : " $";
 
   const totalQuantity =
-    asset.history?.reduce((sum, h) => sum + h.quantity, 0) ?? asset.quantity;
+    asset.history?.reduce(
+      (sum, h) =>
+        sum + (h.type === "WITHDRAWAL" ? -h.quantity : h.quantity),
+      0
+    ) ?? asset.quantity;
 
   const fetchLiveRate = useCallback(async () => {
     setFetchingRate(true);
@@ -375,24 +402,32 @@ function AssetCard({
     });
   };
 
-  const addPurchase = () => {
+  const submitEntry = () => {
     if (addForm.quantity <= 0) {
       toast.error("أدخل كمية صحيحة");
+      return;
+    }
+    if (!addMode) return;
+    if (addMode === "WITHDRAWAL" && addForm.quantity > totalQuantity) {
+      toast.error("الكمية أكبر من الرصيد المتاح");
       return;
     }
     startTransition(async () => {
       const res = await fetch(`/api/savings/assets/${asset.id}/entries`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(addForm),
+        body: JSON.stringify({ ...addForm, type: addMode }),
       });
       if (!res.ok) {
-        toast.error("فشل إضافة الشراء");
+        const data = await res.json().catch(() => ({}));
+        toast.error(data.error ?? "فشل الحفظ");
         return;
       }
-      toast.success("تمت إضافة الشراء");
+      toast.success(
+        addMode === "WITHDRAWAL" ? "تم تسجيل السحب" : "تمت إضافة الشراء"
+      );
       setAddForm({ quantity: 0, purchasedAt: localTodayIso(), notes: "" });
-      setShowAdd(false);
+      setAddMode(null);
       router.refresh();
     });
   };
@@ -508,22 +543,71 @@ function AssetCard({
       )}
 
       <div className="mt-4 border-t border-slate-100 pt-3">
-        <div className="mb-2 flex items-center justify-between">
-          <p className="text-xs font-semibold text-slate-600">سجل المشتريات</p>
-          <Button
-            type="button"
-            size="sm"
-            variant="ghost"
-            className="h-7 gap-1 px-2 text-xs"
-            onClick={() => setShowAdd((v) => !v)}
-          >
-            {showAdd ? <X className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
-            {showAdd ? "إلغاء" : "إضافة شراء"}
-          </Button>
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <p className="text-xs font-semibold text-slate-600">سجل الحركات</p>
+          <div className="flex gap-1">
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              className="h-7 gap-1 px-2 text-xs"
+              onClick={() =>
+                setAddMode((m) => (m === "PURCHASE" ? null : "PURCHASE"))
+              }
+            >
+              {addMode === "PURCHASE" ? (
+                <X className="h-3.5 w-3.5" />
+              ) : (
+                <Plus className="h-3.5 w-3.5" />
+              )}
+              شراء
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              className="h-7 gap-1 px-2 text-xs text-red-600 hover:bg-red-50 hover:text-red-700"
+              onClick={() =>
+                setAddMode((m) => (m === "WITHDRAWAL" ? null : "WITHDRAWAL"))
+              }
+            >
+              {addMode === "WITHDRAWAL" ? (
+                <X className="h-3.5 w-3.5" />
+              ) : (
+                <ArrowUpRight className="h-3.5 w-3.5" />
+              )}
+              سحب
+            </Button>
+          </div>
         </div>
 
-        {showAdd && (
-          <div className="mb-3 space-y-2 rounded-lg border border-slate-200 bg-white p-3">
+        {addMode && (
+          <div
+            className={`mb-3 space-y-2 rounded-lg border bg-white p-3 ${
+              addMode === "WITHDRAWAL"
+                ? "border-red-200"
+                : "border-slate-200"
+            }`}
+          >
+            <p
+              className={`text-xs font-semibold ${
+                addMode === "WITHDRAWAL" ? "text-red-700" : "text-slate-700"
+              }`}
+            >
+              {addMode === "WITHDRAWAL"
+                ? isGold
+                  ? "سحب / بيع ذهب"
+                  : "سحب دولار"
+                : isGold
+                  ? "شراء ذهب"
+                  : "شراء دولار"}
+            </p>
+            {addMode === "WITHDRAWAL" && (
+              <p className="text-[10px] text-slate-500">
+                الرصيد المتاح: {totalQuantity.toLocaleString("ar-IL")}
+                {unitLabel}
+              </p>
+            )}
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <Label className="text-xs">
@@ -533,6 +617,7 @@ function AssetCard({
                   type="number"
                   step="0.01"
                   min={0.01}
+                  max={addMode === "WITHDRAWAL" ? totalQuantity : undefined}
                   value={addForm.quantity || ""}
                   onChange={(e) =>
                     setAddForm((f) => ({
@@ -544,7 +629,7 @@ function AssetCard({
                 />
               </div>
               <div>
-                <Label className="text-xs">تاريخ الشراء</Label>
+                <Label className="text-xs">التاريخ</Label>
                 <Input
                   type="date"
                   value={addForm.purchasedAt}
@@ -558,18 +643,31 @@ function AssetCard({
             {addForm.quantity > 0 && (
               <p className="text-xs text-slate-600">
                 القيمة المحسوبة:{" "}
-                <strong className="text-slate-900">
+                <strong
+                  className={
+                    addMode === "WITHDRAWAL" ? "text-red-700" : "text-slate-900"
+                  }
+                >
+                  {addMode === "WITHDRAWAL" ? "−" : ""}
                   {formatCurrency(addPreviewValue)}
                 </strong>
               </p>
             )}
             <Button
               size="sm"
-              className="w-full"
+              className={`w-full ${
+                addMode === "WITHDRAWAL"
+                  ? "bg-red-600 hover:bg-red-700"
+                  : ""
+              }`}
               disabled={isPending}
-              onClick={addPurchase}
+              onClick={submitEntry}
             >
-              {isPending ? "..." : "حفظ الشراء"}
+              {isPending
+                ? "..."
+                : addMode === "WITHDRAWAL"
+                  ? "حفظ السحب"
+                  : "حفظ الشراء"}
             </Button>
           </div>
         )}
@@ -577,7 +675,7 @@ function AssetCard({
         {asset.history && asset.history.length > 0 ? (
           <div className="max-h-48 space-y-0.5 overflow-y-auto">
             {asset.history.map((h) => (
-              <PurchaseRow
+              <AssetEntryRow
                 key={h.id}
                 assetId={asset.id}
                 entry={h}
@@ -588,7 +686,7 @@ function AssetCard({
           </div>
         ) : (
           <p className="py-2 text-center text-xs text-slate-400">
-            لا توجد مشتريات — أضف شراءً جديداً
+            لا توجد حركات — أضف شراءً أو سحباً
           </p>
         )}
       </div>

@@ -29,6 +29,7 @@ export async function POST(
     const entry = await addAssetEntry({
       userId: user.id,
       assetId,
+      type: parsed.data.type,
       quantity: parsed.data.quantity,
       purchasedAt: parsed.data.purchasedAt,
       notes: parsed.data.notes,
@@ -39,6 +40,12 @@ export async function POST(
 
     return NextResponse.json(entry, { status: 201 });
   } catch (error) {
+    if (error instanceof Error && error.message === "INSUFFICIENT_BALANCE") {
+      return NextResponse.json(
+        { error: "الكمية أكبر من الرصيد المتاح" },
+        { status: 400 }
+      );
+    }
     return handleApiError(error);
   }
 }

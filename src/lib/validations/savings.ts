@@ -55,7 +55,10 @@ export const savingsAssetPatchSchema = savingsAssetSchema
 
 export type SavingsAssetInput = z.infer<typeof savingsAssetSchema>;
 
+export const savingsAssetEntryTypeSchema = z.enum(["PURCHASE", "WITHDRAWAL"]);
+
 export const savingsAssetEntrySchema = z.object({
+  type: savingsAssetEntryTypeSchema.default("PURCHASE"),
   quantity: z.coerce.number().positive("الكمية يجب أن تكون أكبر من صفر"),
   purchasedAt: z.string().min(1, "التاريخ مطلوب"),
   notes: z.string().max(300).optional().or(z.literal("")),
