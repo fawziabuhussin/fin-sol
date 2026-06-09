@@ -49,9 +49,21 @@ export const savingsAssetSchema = z.object({
   notes: z.string().max(300).optional().or(z.literal("")),
 });
 
-export const savingsAssetPatchSchema = savingsAssetSchema.partial();
+export const savingsAssetPatchSchema = savingsAssetSchema
+  .omit({ quantity: true, unitPrice: true })
+  .partial();
 
 export type SavingsAssetInput = z.infer<typeof savingsAssetSchema>;
+
+export const savingsAssetEntrySchema = z.object({
+  quantity: z.coerce.number().positive("الكمية يجب أن تكون أكبر من صفر"),
+  purchasedAt: z.string().min(1, "التاريخ مطلوب"),
+  notes: z.string().max(300).optional().or(z.literal("")),
+});
+
+export const savingsAssetEntryPatchSchema = savingsAssetEntrySchema.partial();
+
+export type SavingsAssetEntryInput = z.infer<typeof savingsAssetEntrySchema>;
 
 export const savingsAssetPurchaseSchema = z
   .object({

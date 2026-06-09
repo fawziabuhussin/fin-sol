@@ -20,12 +20,17 @@ import {
 import {
   Coins,
   DollarSign,
+  Pencil,
   PiggyBank,
+  Plus,
   RefreshCw,
   Target,
+  Trash2,
   TrendingUp,
   Wallet,
+  X,
 } from "lucide-react";
+import { localTodayIso } from "@/lib/dates";
 import { GOLD_KARAT_OPTIONS } from "@/lib/market-rates";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -119,13 +124,160 @@ function applyLiveUsdToAssets(
       ...asset,
       unitPrice: liveUsdIls,
       valueIls,
-      history: asset.history?.map((h) => ({
-        ...h,
-        unitPrice: liveUsdIls,
-        valueIls: computeAssetValueIls("USD", h.quantity, liveUsdIls, liveUsdIls),
-      })),
     };
   });
+}
+
+type PurchaseHistoryRow = NonNullable<
+  SavingsSummaryData["assets"][number]["history"]
+>[number];
+
+function PurchaseRow({
+  assetId,
+  entry,
+  isGold,
+  unitLabel,
+}: {
+  assetId: string;
+  entry: PurchaseHistoryRow;
+  isGold: boolean;
+  unitLabel: string;
+}) {
+  const router = useRouter();
+  const [isPending, startTransition] = useTransition();
+  const [editing, setEditing] = useState(false);
+  const [form, setForm] = useState({
+    quantity: entry.quantity,
+    purchasedAt: entry.purchasedAt,
+    notes: entry.notes ?? "",
+  });
+
+  const saveEdit = () => {
+    if (form.quantity <= 0) {
+      toast.error("الكمية يجب أن تكون أكبر من صفر");
+      return;
+    }
+    startTransition(async () => {
+      const res = await fetch(
+        `/api/savings/assets/${assetId}/entries/${entry.id}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(form),
+        }
+      );
+      if (!res.ok) {
+        toast.error("فشل التعديل");
+        return;
+      }
+      toast.success("تم تعديل الشراء");
+      setEditing(false);
+      router.refresh();
+    });
+  };
+
+  const remove = () => {
+    if (!confirm("حذف هذا الشراء من السجل؟")) return;
+    startTransition(async () => {
+      const res = await fetch(
+        `/api/savings/assets/${assetId}/entries/${entry.id}`,
+        { method: "DELETE" }
+      );
+      if (!res.ok) {
+        toast.error("فشل الحذف");
+        return;
+      }
+      toast.success("تم حذف الشراء");
+      router.refresh();
+    });
+  };
+
+  if (editing) {
+    return (
+      <div className="space-y-2 rounded-lg border border-slate-200 bg-white p-2">
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <Label className="text-[10px]">{isGold ? "الوزن (غرام)" : "المبلغ ($)"}</Label>
+            <Input
+              type="number"
+              step="0.01"
+              min={0.01}
+              value={form.quantity || ""}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, quantity: Number(e.target.value) }))
+              }
+              className="h-8 text-xs"
+            />
+          </div>
+          <div>
+            <Label className="text-[10px]">التاريخ</Label>
+            <Input
+              type="date"
+              value={form.purchasedAt}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, purchasedAt: e.target.value }))
+              }
+              className="h-8 text-xs"
+            />
+          </div>
+        </div>
+        <p className="text-[10px] text-slate-500">
+          القيمة تُحسب تلقائياً — {formatCurrency(entry.valueIls)} (عند الحفظ
+          تُحدَّث)
+        </p>
+        <div className="flex gap-1">
+          <Button
+            size="sm"
+            className="h-7 flex-1 text-xs"
+            disabled={isPending}
+            onClick={saveEdit}
+          >
+            حفظ
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-7 px-2"
+            onClick={() => setEditing(false)}
+          >
+            <X className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-2 rounded-lg px-1 py-1.5 text-xs hover:bg-white/60">
+      <div className="min-w-0 flex-1 text-slate-600">
+        <span>
+          {entry.purchasedAt} · {entry.quantity}
+          {unitLabel}
+        </span>
+      </div>
+      <span className="shrink-0 font-semibold text-slate-800">
+        {formatCurrency(entry.valueIls)}
+      </span>
+      <button
+        type="button"
+        onClick={() => setEditing(true)}
+        disabled={isPending}
+        className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+        aria-label="تعديل"
+      >
+        <Pencil className="h-3.5 w-3.5" />
+      </button>
+      <button
+        type="button"
+        onClick={remove}
+        disabled={isPending}
+        className="rounded p-1 text-slate-400 hover:bg-red-50 hover:text-red-600"
+        aria-label="حذف"
+      >
+        <Trash2 className="h-3.5 w-3.5" />
+      </button>
+    </div>
+  );
 }
 
 function AssetCard({
@@ -141,20 +293,27 @@ function AssetCard({
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
-  const [form, setForm] = useState({
-    quantity: asset.quantity,
-    unitPrice: asset.unitPrice,
-    goldKarat: asset.goldKarat ?? 21,
+  const [goldKarat, setGoldKarat] = useState(asset.goldKarat ?? 21);
+  const [showAdd, setShowAdd] = useState(false);
+  const [addForm, setAddForm] = useState({
+    quantity: 0,
+    purchasedAt: localTodayIso(),
+    notes: "",
   });
   const [rateMeta, setRateMeta] = useState<string | null>(null);
+  const [liveGoldPrice, setLiveGoldPrice] = useState(asset.unitPrice);
   const [fetchingRate, setFetchingRate] = useState(false);
   const isGold = asset.kind === "GOLD";
+  const unitLabel = isGold ? " غ" : " $";
+
+  const totalQuantity =
+    asset.history?.reduce((sum, h) => sum + h.quantity, 0) ?? asset.quantity;
 
   const fetchLiveRate = useCallback(async () => {
     setFetchingRate(true);
     try {
       const url = isGold
-        ? `/api/savings/market-rates?karat=${form.goldKarat}`
+        ? `/api/savings/market-rates?karat=${goldKarat}`
         : "/api/savings/market-rates?karat=21";
       const res = await fetch(url, { cache: "no-store" });
       const data = await res.json();
@@ -163,7 +322,7 @@ function AssetCard({
         return;
       }
       if (isGold) {
-        setForm((f) => ({ ...f, unitPrice: data.gold.pricePerGramIls }));
+        setLiveGoldPrice(data.gold.pricePerGramIls);
         setRateMeta(
           `سعر ${data.gold.karat}K: ${data.gold.pricePerGramIls.toLocaleString("ar-IL")} ₪/غرام · أونصة $${Math.round(data.gold.pricePerOzUsd).toLocaleString("en-US")}`
         );
@@ -178,7 +337,7 @@ function AssetCard({
     } finally {
       setFetchingRate(false);
     }
-  }, [isGold, form.goldKarat, onLiveUsd]);
+  }, [isGold, goldKarat, onLiveUsd]);
 
   useEffect(() => {
     fetchLiveRate();
@@ -188,28 +347,55 @@ function AssetCard({
     }
   }, [fetchLiveRate, isGold]);
 
-  const save = () => {
+  const usdRate = liveUsdIls ?? asset.unitPrice;
+  const portfolioValue = isGold
+    ? computeAssetValueIls("GOLD", totalQuantity, liveGoldPrice)
+    : computeAssetValueIls("USD", totalQuantity, usdRate, usdRate);
+
+  const addPreviewValue =
+    addForm.quantity > 0
+      ? isGold
+        ? computeAssetValueIls("GOLD", addForm.quantity, liveGoldPrice)
+        : computeAssetValueIls("USD", addForm.quantity, usdRate, usdRate)
+      : 0;
+
+  const saveGoldKarat = () => {
     startTransition(async () => {
       const res = await fetch(`/api/savings/assets/${asset.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(
-          isGold ? form : { quantity: form.quantity }
-        ),
+        body: JSON.stringify({ goldKarat }),
       });
       if (!res.ok) {
         toast.error("فشل الحفظ");
         return;
       }
-      toast.success("تم تحديث الأصل");
+      toast.success("تم تحديث العيار");
       router.refresh();
     });
   };
 
-  const usdRate = liveUsdIls ?? asset.unitPrice;
-  const previewValue = isGold
-    ? computeAssetValueIls("GOLD", form.quantity, form.unitPrice)
-    : computeAssetValueIls("USD", form.quantity, usdRate, usdRate);
+  const addPurchase = () => {
+    if (addForm.quantity <= 0) {
+      toast.error("أدخل كمية صحيحة");
+      return;
+    }
+    startTransition(async () => {
+      const res = await fetch(`/api/savings/assets/${asset.id}/entries`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(addForm),
+      });
+      if (!res.ok) {
+        toast.error("فشل إضافة الشراء");
+        return;
+      }
+      toast.success("تمت إضافة الشراء");
+      setAddForm({ quantity: 0, purchasedAt: localTodayIso(), notes: "" });
+      setShowAdd(false);
+      router.refresh();
+    });
+  };
 
   return (
     <motion.div
@@ -252,98 +438,57 @@ function AssetCard({
               isGold ? "text-amber-700" : "text-emerald-700"
             }`}
           >
-            {formatCurrency(previewValue)}
+            {formatCurrency(portfolioValue)}
           </p>
           <p className="text-xs text-slate-500">
-            {!isGold && liveUsdDate
-              ? `سعر حي · ${liveUsdDate}`
-              : `آخر تحديث: ${asset.updatedAt}`}
+            {totalQuantity.toLocaleString("ar-IL")}
+            {unitLabel}
+            {!isGold && liveUsdDate ? ` · سعر حي ${liveUsdDate}` : ""}
           </p>
         </div>
       </div>
 
-      {isGold ? (
-        <div className="mt-4 space-y-2">
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <Label className="text-xs">العيار (قيراط)</Label>
-              <select
-                value={form.goldKarat}
-                onChange={(e) =>
-                  setForm((f) => ({
-                    ...f,
-                    goldKarat: Number(e.target.value),
-                  }))
-                }
-                className="flex h-9 w-full rounded-md border border-slate-200 bg-white px-2 text-sm"
-              >
-                {GOLD_KARAT_OPTIONS.map((k) => (
-                  <option key={k} value={k}>
-                    {k}K
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <Label className="text-xs">الوزن (غرام)</Label>
-              <Input
-                type="number"
-                step="0.01"
-                min={0}
-                value={form.quantity || ""}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, quantity: Number(e.target.value) }))
-                }
-                className="h-9"
-              />
-            </div>
+      {isGold && (
+        <div className="mt-4 flex gap-2">
+          <div className="flex-1">
+            <Label className="text-xs">العيار (قيراط)</Label>
+            <select
+              value={goldKarat}
+              onChange={(e) => setGoldKarat(Number(e.target.value))}
+              className="flex h-9 w-full rounded-md border border-slate-200 bg-white px-2 text-sm"
+            >
+              {GOLD_KARAT_OPTIONS.map((k) => (
+                <option key={k} value={k}>
+                  {k}K
+                </option>
+              ))}
+            </select>
           </div>
-          <div>
-            <Label className="text-xs">سعر الغرام (₪) — تلقائي</Label>
-            <Input
-              type="number"
-              step="0.01"
-              value={form.unitPrice || ""}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, unitPrice: Number(e.target.value) }))
-              }
-              className="h-9"
-            />
+          <div className="flex items-end">
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={isPending || goldKarat === (asset.goldKarat ?? 21)}
+              onClick={saveGoldKarat}
+            >
+              حفظ العيار
+            </Button>
           </div>
-        </div>
-      ) : (
-        <div className="mt-4 space-y-2">
-          <div>
-            <Label className="text-xs">المبلغ ($)</Label>
-            <Input
-              type="number"
-              step="0.01"
-              min={0}
-              value={form.quantity || ""}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, quantity: Number(e.target.value) }))
-              }
-              className="h-9"
-            />
-          </div>
-          <div>
-            <Label className="text-xs">سعر الصرف (₪/$) — تلقائي من الإنترنت</Label>
-            <Input
-              type="number"
-              step="0.0001"
-              readOnly
-              value={usdRate || ""}
-              className="h-9 bg-slate-50"
-            />
-          </div>
-          {form.quantity > 0 && usdRate > 0 && (
-            <p className="text-xs text-emerald-700">
-              {form.quantity.toLocaleString("ar-IL")} $ × {usdRate} ={" "}
-              {formatCurrency(previewValue)}
-            </p>
-          )}
         </div>
       )}
+
+      <div className="mt-3 rounded-lg bg-white/50 px-3 py-2 text-xs text-slate-600">
+        {isGold ? (
+          <span>
+            سعر الغرام الحالي:{" "}
+            <strong>{liveGoldPrice.toLocaleString("ar-IL")} ₪</strong>
+          </span>
+        ) : (
+          <span>
+            سعر الصرف: <strong>{usdRate} ₪/$</strong>
+          </span>
+        )}
+      </div>
 
       <Button
         type="button"
@@ -362,34 +507,91 @@ function AssetCard({
         <p className="mt-2 text-[10px] leading-relaxed text-slate-500">{rateMeta}</p>
       )}
 
-      <Button
-        size="sm"
-        className="mt-2 w-full"
-        disabled={isPending}
-        onClick={save}
-      >
-        {isPending ? "..." : "حفظ"}
-      </Button>
+      <div className="mt-4 border-t border-slate-100 pt-3">
+        <div className="mb-2 flex items-center justify-between">
+          <p className="text-xs font-semibold text-slate-600">سجل المشتريات</p>
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            className="h-7 gap-1 px-2 text-xs"
+            onClick={() => setShowAdd((v) => !v)}
+          >
+            {showAdd ? <X className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
+            {showAdd ? "إلغاء" : "إضافة شراء"}
+          </Button>
+        </div>
 
-      {asset.history && asset.history.length > 0 && (
-        <div className="mt-4 border-t border-slate-100 pt-3">
-          <p className="mb-2 text-xs font-semibold text-slate-600">سجل المشتريات</p>
-          <div className="max-h-36 space-y-1 overflow-y-auto">
-            {asset.history.map((h) => (
-              <div
-                key={h.id}
-                className="flex justify-between text-xs text-slate-600"
-              >
-                <span>
-                  {h.purchasedAt} · {h.quantity}
-                  {isGold ? " غ" : " $"}
-                </span>
-                <span className="font-semibold">{formatCurrency(h.valueIls)}</span>
+        {showAdd && (
+          <div className="mb-3 space-y-2 rounded-lg border border-slate-200 bg-white p-3">
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <Label className="text-xs">
+                  {isGold ? "الوزن (غرام)" : "المبلغ ($)"}
+                </Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  min={0.01}
+                  value={addForm.quantity || ""}
+                  onChange={(e) =>
+                    setAddForm((f) => ({
+                      ...f,
+                      quantity: Number(e.target.value),
+                    }))
+                  }
+                  className="h-9"
+                />
               </div>
+              <div>
+                <Label className="text-xs">تاريخ الشراء</Label>
+                <Input
+                  type="date"
+                  value={addForm.purchasedAt}
+                  onChange={(e) =>
+                    setAddForm((f) => ({ ...f, purchasedAt: e.target.value }))
+                  }
+                  className="h-9"
+                />
+              </div>
+            </div>
+            {addForm.quantity > 0 && (
+              <p className="text-xs text-slate-600">
+                القيمة المحسوبة:{" "}
+                <strong className="text-slate-900">
+                  {formatCurrency(addPreviewValue)}
+                </strong>
+              </p>
+            )}
+            <Button
+              size="sm"
+              className="w-full"
+              disabled={isPending}
+              onClick={addPurchase}
+            >
+              {isPending ? "..." : "حفظ الشراء"}
+            </Button>
+          </div>
+        )}
+
+        {asset.history && asset.history.length > 0 ? (
+          <div className="max-h-48 space-y-0.5 overflow-y-auto">
+            {asset.history.map((h) => (
+              <PurchaseRow
+                key={h.id}
+                assetId={asset.id}
+                entry={h}
+                isGold={isGold}
+                unitLabel={unitLabel}
+              />
             ))}
           </div>
-        </div>
-      )}
+        ) : (
+          <p className="py-2 text-center text-xs text-slate-400">
+            لا توجد مشتريات — أضف شراءً جديداً
+          </p>
+        )}
+      </div>
     </motion.div>
   );
 }

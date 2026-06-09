@@ -1622,16 +1622,12 @@ export async function getSavingsSummary(
       updatedAt: asset.updatedAt.toISOString().slice(0, 10),
       history: asset.entries.map((e) => {
         const entryQty = decimalToNumber(e.quantity);
+        const entryUnitPrice = decimalToNumber(e.unitPrice);
         return {
           id: e.id,
           quantity: entryQty,
-          unitPrice: isUsd && liveUsdIls != null ? liveUsdIls : decimalToNumber(e.unitPrice),
-          valueIls: computeAssetValueIls(
-            asset.kind,
-            entryQty,
-            decimalToNumber(e.unitPrice),
-            isUsd ? liveUsdIls : null
-          ),
+          unitPrice: entryUnitPrice,
+          valueIls: decimalToNumber(e.valueIls),
           purchasedAt: e.purchasedAt.toISOString().slice(0, 10),
           notes: e.notes,
         };
