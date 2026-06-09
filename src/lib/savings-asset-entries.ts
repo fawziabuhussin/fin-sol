@@ -1,5 +1,4 @@
 import { prisma } from "@/lib/db";
-import { isLocalTodayDate } from "@/lib/dates";
 import { getMarketRates } from "@/lib/market-rates";
 import { assetMovementDescription } from "@/lib/asset-movement-labels";
 import {
@@ -31,14 +30,10 @@ async function resolveUnitPrice(
     return rates.gold.pricePerGramIls;
   }
 
-  const useStored =
-    explicitUnitPrice != null &&
-    explicitUnitPrice > 0 &&
-    !isLocalTodayDate(purchasedAt);
-  if (useStored) return explicitUnitPrice!;
-
-  const rates = await getMarketRates();
-  return rates.usdIls;
+  if (explicitUnitPrice != null && explicitUnitPrice > 0) {
+    return explicitUnitPrice;
+  }
+  throw new Error("UNIT_PRICE_REQUIRED");
 }
 
 async function currentBalance(assetId: string, excludeEntryId?: string) {
@@ -169,7 +164,7 @@ async function syncUsdBankFee(params: {
   purchasedAt: Date;
   existingFeeTransactionId?: string | null;
 }) {
-  if (params.asset.kind !== "USD" || params.entryType !== "PURCHASE") {
+  if (params.asset.kind !== "USD") {
     if (params.existingFeeTransactionId) {
       await prisma.transaction
         .delete({ where: { id: params.existingFeeTransactionId } })
@@ -184,6 +179,7 @@ async function syncUsdBankFee(params: {
     amount: fee,
     occurredAt: params.purchasedAt,
     dollarQuantity: params.dollarQuantity,
+    entryType: params.entryType,
     existingTransactionId: params.existingFeeTransactionId,
   });
 
@@ -225,15 +221,7 @@ export async function addAssetEntry(params: {
     goldKarat,
     params.unitPrice
   );
-  const liveRates = asset.kind === "USD" ? await getMarketRates().catch(() => null) : null;
-  const valueIlsAbs = computeAssetValueIls(
-    asset.kind,
-    absQty,
-    unitPrice,
-    asset.kind === "USD" && isLocalTodayDate(params.purchasedAt)
-      ? liveRates?.usdIls
-      : null
-  );
+  const valueIlsAbs = computeAssetValueIls(asset.kind, absQty, unitPrice);
   const signedQty = signedQuantity(entryType, absQty);
   const signedValue = entryType === "WITHDRAWAL" ? -valueIlsAbs : valueIlsAbs;
   const purchasedAt = new Date(params.purchasedAt);
@@ -321,25 +309,18 @@ export async function updateAssetEntry(params: {
     );
   } else if (asset.kind === "GOLD" && params.purchasedAt !== undefined) {
     unitPrice = await resolveUnitPrice(asset, purchasedAtStr, goldKarat);
-  } else if (
-    asset.kind === "USD" &&
-    params.purchasedAt !== undefined &&
-    isLocalTodayDate(purchasedAtStr)
-  ) {
-    unitPrice = await resolveUnitPrice(asset, purchasedAtStr, goldKarat);
+  } else if (asset.kind === "USD") {
+    unitPrice = await resolveUnitPrice(
+      asset,
+      purchasedAtStr,
+      goldKarat,
+      params.unitPrice ?? Number(existing.unitPrice)
+    );
   } else if (params.unitPrice != null && params.unitPrice > 0) {
     unitPrice = params.unitPrice;
   }
 
-  const liveRates = asset.kind === "USD" ? await getMarketRates().catch(() => null) : null;
-  const valueIlsAbs = computeAssetValueIls(
-    asset.kind,
-    absQty,
-    unitPrice,
-    asset.kind === "USD" && isLocalTodayDate(purchasedAtStr)
-      ? liveRates?.usdIls
-      : null
-  );
+  const valueIlsAbs = computeAssetValueIls(asset.kind, absQty, unitPrice);
   const signedQty = signedQuantity(entryType, absQty);
   const signedValue = entryType === "WITHDRAWAL" ? -valueIlsAbs : valueIlsAbs;
   const purchasedAt = new Date(purchasedAtStr);

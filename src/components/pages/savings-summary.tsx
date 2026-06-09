@@ -151,13 +151,13 @@ function AssetEntryRow({
   entry,
   quantityLabel,
   unitLabel,
-  showBankFee,
+  showUsdFields,
 }: {
   assetId: string;
   entry: AssetHistoryRow;
   quantityLabel: string;
   unitLabel: string;
-  showBankFee?: boolean;
+  showUsdFields?: boolean;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -166,6 +166,7 @@ function AssetEntryRow({
   const [form, setForm] = useState({
     quantity: entry.quantity,
     purchasedAt: entry.purchasedAt,
+    unitPrice: entry.unitPrice,
     bankFeeIls: entry.bankFeeIls ?? 0,
     notes: entry.notes ?? "",
   });
@@ -173,6 +174,10 @@ function AssetEntryRow({
   const saveEdit = () => {
     if (form.quantity <= 0) {
       toast.error("الكمية يجب أن تكون أكبر من صفر");
+      return;
+    }
+    if (showUsdFields && (!form.unitPrice || form.unitPrice <= 0)) {
+      toast.error("أدخل سعر الصرف عند البنك");
       return;
     }
     startTransition(async () => {
@@ -185,8 +190,11 @@ function AssetEntryRow({
             quantity: form.quantity,
             purchasedAt: form.purchasedAt,
             notes: form.notes,
-            ...(showBankFee && !isWithdrawal
-              ? { bankFeeIls: form.bankFeeIls }
+            ...(showUsdFields
+              ? {
+                  unitPrice: form.unitPrice,
+                  bankFeeIls: form.bankFeeIls,
+                }
               : {}),
           }),
         }
@@ -248,29 +256,45 @@ function AssetEntryRow({
             />
           </div>
         </div>
-        {showBankFee && !isWithdrawal && (
-          <div>
-            <Label className="text-[10px]">رسوم البنك (₪)</Label>
-            <Input
-              type="number"
-              step="0.01"
-              min={0}
-              value={form.bankFeeIls || ""}
-              onChange={(e) =>
-                setForm((f) => ({
-                  ...f,
-                  bankFeeIls: Number(e.target.value),
-                }))
-              }
-              className="h-8 text-xs"
-            />
-          </div>
+        {showUsdFields && (
+          <>
+            <div>
+              <Label className="text-[10px]">سعر الصرف عند البنك (₪/$)</Label>
+              <Input
+                type="number"
+                step="0.001"
+                min={0.01}
+                value={form.unitPrice || ""}
+                onChange={(e) =>
+                  setForm((f) => ({
+                    ...f,
+                    unitPrice: Number(e.target.value),
+                  }))
+                }
+                className="h-8 text-xs"
+              />
+            </div>
+            <div>
+              <Label className="text-[10px]">رسوم البنك (₪)</Label>
+              <Input
+                type="number"
+                step="0.01"
+                min={0}
+                value={form.bankFeeIls || ""}
+                onChange={(e) =>
+                  setForm((f) => ({
+                    ...f,
+                    bankFeeIls: Number(e.target.value),
+                  }))
+                }
+                className="h-8 text-xs"
+              />
+            </div>
+          </>
         )}
         <p className="text-[10px] text-slate-500">
-          القيمة تُحسب تلقائياً — {formatCurrency(entry.valueIls)}
-          {showBankFee && !isWithdrawal && entry.bankFeeIls
-            ? ` + رسوم ${formatCurrency(entry.bankFeeIls)}`
-            : ""}{" "}
+          القيمة تُحسب من سعر البنك — {formatCurrency(entry.valueIls)}
+          {entry.bankFeeIls ? ` · رسوم ${formatCurrency(entry.bankFeeIls)}` : ""}{" "}
           (عند الحفظ تُحدَّث)
         </p>
         <div className="flex gap-1">
@@ -312,6 +336,12 @@ function AssetEntryRow({
             {entry.purchasedAt} · {isWithdrawal ? "−" : "+"}
             {entry.quantity}
             {unitLabel}
+            {showUsdFields && entry.unitPrice > 0 && (
+              <span className="text-slate-500">
+                {" "}
+                @ {entry.unitPrice} ₪/$
+              </span>
+            )}
           </span>
         </span>
       </div>
@@ -322,9 +352,10 @@ function AssetEntryRow({
       >
         {isWithdrawal ? "−" : ""}
         {formatCurrency(entry.valueIls)}
-        {!isWithdrawal && entry.bankFeeIls != null && entry.bankFeeIls > 0 && (
+        {entry.bankFeeIls != null && entry.bankFeeIls > 0 && (
           <span className="block text-[10px] font-normal text-slate-500">
-            +{formatCurrency(entry.bankFeeIls)} رسوم
+            {isWithdrawal ? "−" : "+"}
+            {formatCurrency(entry.bankFeeIls)} رسوم
           </span>
         )}
       </span>
@@ -435,6 +466,8 @@ function AssetCard({
     : isUsd
       ? usdRate
       : manualRate;
+  const bankRate =
+    isUsd && addForm.unitPrice > 0 ? addForm.unitPrice : usdRate;
 
   const portfolioValue = isUsd
     ? computeAssetValueIls("USD", totalQuantity, usdRate, usdRate)
@@ -443,9 +476,21 @@ function AssetCard({
   const addPreviewValue =
     addForm.quantity > 0
       ? isUsd
-        ? computeAssetValueIls("USD", addForm.quantity, usdRate, usdRate)
+        ? computeAssetValueIls("USD", addForm.quantity, bankRate)
         : computeAssetValueIls(asset.kind, addForm.quantity, activeUnitPrice)
       : 0;
+
+  const openAddMode = (mode: "PURCHASE" | "WITHDRAWAL") => {
+    const closing = addMode === mode;
+    setAddMode(closing ? null : mode);
+    if (!closing && isUsd) {
+      setAddForm((f) => ({
+        ...f,
+        unitPrice: usdRate,
+        bankFeeIls: 0,
+      }));
+    }
+  };
 
   const saveGoldKarat = () => {
     startTransition(async () => {
@@ -473,6 +518,10 @@ function AssetCard({
       toast.error("الكمية أكبر من الرصيد المتاح");
       return;
     }
+    if (isUsd && (!addForm.unitPrice || addForm.unitPrice <= 0)) {
+      toast.error("أدخل سعر الصرف عند البنك (₪/$)");
+      return;
+    }
     startTransition(async () => {
       const res = await fetch(`/api/savings/assets/${asset.id}/entries`, {
         method: "POST",
@@ -482,8 +531,8 @@ function AssetCard({
           purchasedAt: addForm.purchasedAt,
           notes: addForm.notes,
           type: addMode,
-          ...(isManual ? { unitPrice: addForm.unitPrice } : {}),
-          ...(isUsd && addMode === "PURCHASE" && addForm.bankFeeIls > 0
+          ...(isManual || isUsd ? { unitPrice: addForm.unitPrice } : {}),
+          ...(isUsd && addForm.bankFeeIls > 0
             ? { bankFeeIls: addForm.bankFeeIls }
             : {}),
         }),
@@ -593,7 +642,7 @@ function AssetCard({
           </span>
         ) : isUsd ? (
           <span>
-            سعر الصرف: <strong>{usdRate} ₪/$</strong>
+            تقدير القيمة (سعر مرجعي): <strong>{usdRate} ₪/$</strong>
           </span>
         ) : (
           <span>
@@ -636,9 +685,7 @@ function AssetCard({
               size="sm"
               variant="ghost"
               className="h-7 gap-1 px-2 text-xs"
-              onClick={() =>
-                setAddMode((m) => (m === "PURCHASE" ? null : "PURCHASE"))
-              }
+              onClick={() => openAddMode("PURCHASE")}
             >
               {addMode === "PURCHASE" ? (
                 <X className="h-3.5 w-3.5" />
@@ -652,9 +699,7 @@ function AssetCard({
               size="sm"
               variant="ghost"
               className="h-7 gap-1 px-2 text-xs text-red-600 hover:bg-red-50 hover:text-red-700"
-              onClick={() =>
-                setAddMode((m) => (m === "WITHDRAWAL" ? null : "WITHDRAWAL"))
-              }
+              onClick={() => openAddMode("WITHDRAWAL")}
             >
               {addMode === "WITHDRAWAL" ? (
                 <X className="h-3.5 w-3.5" />
@@ -719,7 +764,7 @@ function AssetCard({
                 />
               </div>
             </div>
-            {isManual && (
+            {isManual && !isUsd && (
               <div>
                 <Label className="text-xs">سعر الوحدة (₪)</Label>
                 <Input
@@ -737,42 +782,81 @@ function AssetCard({
                 />
               </div>
             )}
-            {isUsd && addMode === "PURCHASE" && (
-              <div>
-                <Label className="text-xs">رسوم البنك (₪)</Label>
-                <Input
-                  type="number"
-                  step="0.01"
-                  min={0}
-                  placeholder="مثال: 16.1"
-                  value={addForm.bankFeeIls || ""}
-                  onChange={(e) =>
-                    setAddForm((f) => ({
-                      ...f,
-                      bankFeeIls: Number(e.target.value),
-                    }))
-                  }
-                  className="h-9"
-                />
-                <p className="mt-0.5 text-[10px] text-slate-500">
-                  تُسجَّل كمصروف (رسوم بنكية) وتُخصم من صافي الدخل
-                </p>
-              </div>
+            {isUsd && (
+              <>
+                <div>
+                  <Label className="text-xs">سعر الصرف عند البنك (₪/$)</Label>
+                  <Input
+                    type="number"
+                    step="0.001"
+                    min={0.01}
+                    placeholder={`مرجع: ${usdRate}`}
+                    value={addForm.unitPrice || ""}
+                    onChange={(e) =>
+                      setAddForm((f) => ({
+                        ...f,
+                        unitPrice: Number(e.target.value),
+                      }))
+                    }
+                    className="h-9"
+                  />
+                  <p className="mt-0.5 text-[10px] text-slate-500">
+                    السعر الفعلي من البنك — السعر المرجعي أعلاه للتقدير فقط
+                  </p>
+                </div>
+                <div>
+                  <Label className="text-xs">رسوم البنك (₪)</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min={0}
+                    placeholder="مثال: 16.1"
+                    value={addForm.bankFeeIls || ""}
+                    onChange={(e) =>
+                      setAddForm((f) => ({
+                        ...f,
+                        bankFeeIls: Number(e.target.value),
+                      }))
+                    }
+                    className="h-9"
+                  />
+                  <p className="mt-0.5 text-[10px] text-slate-500">
+                    تُسجَّل كمصروف (رسوم بنكية) وتُخصم من صافي الدخل
+                  </p>
+                </div>
+              </>
             )}
             {addForm.quantity > 0 && (
               <p className="text-xs text-slate-600">
-                {isUsd && addMode === "PURCHASE" && addForm.bankFeeIls > 0 ? (
+                {isUsd ? (
                   <>
-                    قيمة الدولار:{" "}
-                    <strong>{formatCurrency(addPreviewValue)}</strong>
-                    {" · "}
-                    رسوم البنك:{" "}
-                    <strong>{formatCurrency(addForm.bankFeeIls)}</strong>
-                    {" · "}
-                    الإجمالي من الحساب:{" "}
-                    <strong>
-                      {formatCurrency(addPreviewValue + addForm.bankFeeIls)}
+                    {addMode === "WITHDRAWAL" ? "قيمة البيع" : "قيمة الشراء"}:{" "}
+                    <strong
+                      className={
+                        addMode === "WITHDRAWAL"
+                          ? "text-red-700"
+                          : "text-slate-900"
+                      }
+                    >
+                      {addMode === "WITHDRAWAL" ? "−" : ""}
+                      {formatCurrency(addPreviewValue)}
                     </strong>
+                    {addForm.bankFeeIls > 0 && (
+                      <>
+                        {" · "}
+                        رسوم البنك:{" "}
+                        <strong>{formatCurrency(addForm.bankFeeIls)}</strong>
+                        {" · "}
+                        {addMode === "WITHDRAWAL" ? "صافي الدخل" : "الإجمالي من الحساب"}:{" "}
+                        <strong>
+                          {formatCurrency(
+                            addMode === "WITHDRAWAL"
+                              ? addPreviewValue - addForm.bankFeeIls
+                              : addPreviewValue + addForm.bankFeeIls
+                          )}
+                        </strong>
+                      </>
+                    )}
                   </>
                 ) : (
                   <>
@@ -819,7 +903,7 @@ function AssetCard({
                 entry={h}
                 quantityLabel={config.quantityLabel}
                 unitLabel={unitLabel}
-                showBankFee={isUsd}
+                showUsdFields={isUsd}
               />
             ))}
           </div>

@@ -25,6 +25,7 @@ export async function upsertUsdBankFeeTransaction(params: {
   amount: number;
   occurredAt: Date;
   dollarQuantity?: number;
+  entryType?: "PURCHASE" | "WITHDRAWAL";
   existingTransactionId?: string | null;
 }) {
   if (params.amount <= 0) {
@@ -37,9 +38,11 @@ export async function upsertUsdBankFeeTransaction(params: {
   }
 
   const categoryId = await ensureBankFeeCategoryId(params.userId);
+  const action =
+    params.entryType === "WITHDRAWAL" ? "بيع" : "شراء";
   const description = params.dollarQuantity
-    ? `رسوم بنك — شراء ${params.dollarQuantity} $`
-    : "رسوم بنك — شراء دولار";
+    ? `رسوم بنك — ${action} ${params.dollarQuantity} $`
+    : `رسوم بنك — ${action} دولار`;
 
   if (params.existingTransactionId) {
     await prisma.transaction.update({

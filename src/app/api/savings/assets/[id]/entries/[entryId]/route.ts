@@ -45,7 +45,7 @@ export async function PATCH(
     }
     if (error instanceof Error && error.message === "UNIT_PRICE_REQUIRED") {
       return NextResponse.json(
-        { error: "أدخل سعر الوحدة بالشيكل" },
+        { error: "أدخل سعر الصرف عند البنك (₪/$)" },
         { status: 400 }
       );
     }
