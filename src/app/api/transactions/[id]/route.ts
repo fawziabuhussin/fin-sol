@@ -28,6 +28,19 @@ export async function PATCH(
       );
     }
 
+    const linkedAssetEntry = await prisma.savingsAssetEntry.findFirst({
+      where: { transactionId: id },
+    });
+    if (linkedAssetEntry) {
+      return NextResponse.json(
+        {
+          error: "ASSET_LINKED",
+          message: "هذه المعاملة مرتبطة بشراء أو سحب أصول — عدّلها من صفحة الادخار",
+        },
+        { status: 403 }
+      );
+    }
+
     const body = await req.json();
     const parsed = transactionSchema.safeParse(body);
     if (!parsed.success) {
@@ -96,6 +109,19 @@ export async function DELETE(
         {
           error: "SALARY_LINKED",
           message: "لا يمكن حذف دخل مرتبط بالراتب — عدّله من صفحة الراتب",
+        },
+        { status: 403 }
+      );
+    }
+
+    const linkedAssetEntry = await prisma.savingsAssetEntry.findFirst({
+      where: { transactionId: id },
+    });
+    if (linkedAssetEntry) {
+      return NextResponse.json(
+        {
+          error: "ASSET_LINKED",
+          message: "لا يمكن حذف شراء أو سحب أصول من هنا — عدّله من صفحة الادخار",
         },
         { status: 403 }
       );

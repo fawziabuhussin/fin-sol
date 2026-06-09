@@ -20,18 +20,26 @@ import {
 import {
   ArrowDownLeft,
   ArrowUpRight,
+  Bitcoin,
   Coins,
   DollarSign,
+  Gem,
   Pencil,
   PiggyBank,
   Plus,
   RefreshCw,
+  Sparkles,
   Target,
   Trash2,
   TrendingUp,
   Wallet,
   X,
 } from "lucide-react";
+import { AddAssetSource } from "@/components/savings/add-asset-source";
+import {
+  getAssetKindConfig,
+  type SavingsAssetKindKey,
+} from "@/lib/savings-asset-kinds";
 import { localTodayIso } from "@/lib/dates";
 import { GOLD_KARAT_OPTIONS } from "@/lib/market-rates";
 import { toast } from "sonner";
@@ -53,6 +61,7 @@ export type SavingsSummaryData = {
     assetsTotal: number;
     goldTotal: number;
     usdTotal: number;
+    otherAssetsTotal?: number;
     kupotTotal: number;
   };
   kupot: {
@@ -78,11 +87,12 @@ export type SavingsSummaryData = {
   }[];
   assets: {
     id: string;
-    kind: "GOLD" | "USD";
+    kind: SavingsAssetKindKey;
     title: string;
     quantity: number;
     unitPrice: number;
     goldKarat: number;
+    unitLabel: string | null;
     priceCurrency: string;
     valueIls: number;
     updatedAt: string;
@@ -138,12 +148,12 @@ type AssetHistoryRow = NonNullable<
 function AssetEntryRow({
   assetId,
   entry,
-  isGold,
+  quantityLabel,
   unitLabel,
 }: {
   assetId: string;
   entry: AssetHistoryRow;
-  isGold: boolean;
+  quantityLabel: string;
   unitLabel: string;
 }) {
   const router = useRouter();
@@ -203,7 +213,7 @@ function AssetEntryRow({
       <div className="space-y-2 rounded-lg border border-slate-200 bg-white p-2">
         <div className="grid grid-cols-2 gap-2">
           <div>
-            <Label className="text-[10px]">{isGold ? "الوزن (غرام)" : "المبلغ ($)"}</Label>
+            <Label className="text-[10px]">{quantityLabel}</Label>
             <Input
               type="number"
               step="0.01"
@@ -321,13 +331,17 @@ function AssetCard({
   const [addForm, setAddForm] = useState({
     quantity: 0,
     purchasedAt: localTodayIso(),
+    unitPrice: asset.unitPrice || 0,
     notes: "",
   });
   const [rateMeta, setRateMeta] = useState<string | null>(null);
   const [liveGoldPrice, setLiveGoldPrice] = useState(asset.unitPrice);
   const [fetchingRate, setFetchingRate] = useState(false);
+  const config = getAssetKindConfig(asset.kind, asset.unitLabel);
   const isGold = asset.kind === "GOLD";
-  const unitLabel = isGold ? " غ" : " $";
+  const isUsd = asset.kind === "USD";
+  const isManual = config.manualUnitPrice;
+  const unitLabel = config.unitSuffix;
 
   const totalQuantity =
     asset.history?.reduce(
@@ -337,6 +351,7 @@ function AssetCard({
     ) ?? asset.quantity;
 
   const fetchLiveRate = useCallback(async () => {
+    if (!config.liveRate) return;
     setFetchingRate(true);
     try {
       const url = isGold
@@ -353,7 +368,7 @@ function AssetCard({
         setRateMeta(
           `سعر ${data.gold.karat}K: ${data.gold.pricePerGramIls.toLocaleString("ar-IL")} ₪/غرام · أونصة $${Math.round(data.gold.pricePerOzUsd).toLocaleString("en-US")}`
         );
-      } else {
+      } else if (isUsd) {
         onLiveUsd(data.usdIls, data.usdIlsDate);
         const src =
           data.usdIlsSource === "boi" ? "בנק ישראל" : "Frankfurter";
@@ -364,26 +379,34 @@ function AssetCard({
     } finally {
       setFetchingRate(false);
     }
-  }, [isGold, goldKarat, onLiveUsd]);
+  }, [config.liveRate, isGold, isUsd, goldKarat, onLiveUsd]);
 
   useEffect(() => {
+    if (!config.liveRate) return;
     fetchLiveRate();
-    if (!isGold) {
+    if (isUsd) {
       const id = setInterval(fetchLiveRate, USD_RATE_POLL_MS);
       return () => clearInterval(id);
     }
-  }, [fetchLiveRate, isGold]);
+  }, [fetchLiveRate, config.liveRate, isUsd]);
 
   const usdRate = liveUsdIls ?? asset.unitPrice;
-  const portfolioValue = isGold
-    ? computeAssetValueIls("GOLD", totalQuantity, liveGoldPrice)
-    : computeAssetValueIls("USD", totalQuantity, usdRate, usdRate);
+  const manualRate = addForm.unitPrice || asset.unitPrice;
+  const activeUnitPrice = isGold
+    ? liveGoldPrice
+    : isUsd
+      ? usdRate
+      : manualRate;
+
+  const portfolioValue = isUsd
+    ? computeAssetValueIls("USD", totalQuantity, usdRate, usdRate)
+    : computeAssetValueIls(asset.kind, totalQuantity, activeUnitPrice);
 
   const addPreviewValue =
     addForm.quantity > 0
-      ? isGold
-        ? computeAssetValueIls("GOLD", addForm.quantity, liveGoldPrice)
-        : computeAssetValueIls("USD", addForm.quantity, usdRate, usdRate)
+      ? isUsd
+        ? computeAssetValueIls("USD", addForm.quantity, usdRate, usdRate)
+        : computeAssetValueIls(asset.kind, addForm.quantity, activeUnitPrice)
       : 0;
 
   const saveGoldKarat = () => {
@@ -416,7 +439,13 @@ function AssetCard({
       const res = await fetch(`/api/savings/assets/${asset.id}/entries`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...addForm, type: addMode }),
+        body: JSON.stringify({
+          quantity: addForm.quantity,
+          purchasedAt: addForm.purchasedAt,
+          notes: addForm.notes,
+          type: addMode,
+          ...(isManual ? { unitPrice: addForm.unitPrice } : {}),
+        }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -426,7 +455,12 @@ function AssetCard({
       toast.success(
         addMode === "WITHDRAWAL" ? "تم تسجيل السحب" : "تمت إضافة الشراء"
       );
-      setAddForm({ quantity: 0, purchasedAt: localTodayIso(), notes: "" });
+      setAddForm({
+        quantity: 0,
+        purchasedAt: localTodayIso(),
+        unitPrice: asset.unitPrice || 0,
+        notes: "",
+      });
       setAddMode(null);
       router.refresh();
     });
@@ -436,49 +470,46 @@ function AssetCard({
     <motion.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      className={`relative overflow-hidden rounded-2xl border p-4 shadow-sm ${
-        isGold
-          ? "border-amber-200 bg-gradient-to-br from-amber-50 via-white to-orange-50"
-          : "border-emerald-200 bg-gradient-to-br from-emerald-50 via-white to-teal-50"
-      }`}
+      className={`relative overflow-hidden rounded-2xl border bg-gradient-to-br p-4 shadow-sm ${config.border} ${config.gradient}`}
     >
-      <div className="flex items-start gap-4">
+      <div className="flex items-start gap-3 sm:gap-4">
         <div
-          className={`flex h-20 w-20 shrink-0 items-center justify-center rounded-2xl ${
-            isGold ? "bg-amber-100/80" : "bg-emerald-100/80"
-          }`}
+          className={`flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl sm:h-20 sm:w-20 ${config.iconBg}`}
         >
-          <Image
-            src={isGold ? "/savings/gold.svg" : "/savings/dollar.svg"}
-            alt={isGold ? "ذهب" : "دولار"}
-            width={72}
-            height={72}
-            className="drop-shadow-sm"
-          />
+          {asset.kind === "GOLD" || asset.kind === "USD" ? (
+            <Image
+              src={asset.kind === "GOLD" ? "/savings/gold.svg" : "/savings/dollar.svg"}
+              alt={config.label}
+              width={64}
+              height={64}
+              className="drop-shadow-sm"
+            />
+          ) : asset.kind === "SILVER" ? (
+            <Gem className="h-9 w-9 text-slate-600 sm:h-10 sm:w-10" />
+          ) : asset.kind === "CRYPTO" ? (
+            <Bitcoin className="h-9 w-9 text-violet-600 sm:h-10 sm:w-10" />
+          ) : (
+            <Sparkles className="h-9 w-9 text-indigo-600 sm:h-10 sm:w-10" />
+          )}
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            {isGold ? (
+            {asset.kind === "GOLD" && (
               <Coins className="h-4 w-4 text-amber-600" />
-            ) : (
+            )}
+            {asset.kind === "USD" && (
               <DollarSign className="h-4 w-4 text-emerald-600" />
             )}
-            <p className="font-bold text-slate-900">
-              {isGold ? "ذهب" : "دولار أمريكي"}
-            </p>
+            <p className="font-bold text-slate-900">{asset.title}</p>
           </div>
-          <p className="mt-0.5 truncate text-sm text-slate-600">{asset.title}</p>
-          <p
-            className={`mt-2 text-2xl font-extrabold ${
-              isGold ? "text-amber-700" : "text-emerald-700"
-            }`}
-          >
+          <p className="mt-0.5 text-xs text-slate-500">{config.label}</p>
+          <p className={`mt-2 text-xl font-extrabold sm:text-2xl ${config.valueColor}`}>
             {formatCurrency(portfolioValue)}
           </p>
           <p className="text-xs text-slate-500">
             {totalQuantity.toLocaleString("ar-IL")}
             {unitLabel}
-            {!isGold && liveUsdDate ? ` · سعر حي ${liveUsdDate}` : ""}
+            {isUsd && liveUsdDate ? ` · سعر حي ${liveUsdDate}` : ""}
           </p>
         </div>
       </div>
@@ -518,28 +549,40 @@ function AssetCard({
             سعر الغرام الحالي:{" "}
             <strong>{liveGoldPrice.toLocaleString("ar-IL")} ₪</strong>
           </span>
-        ) : (
+        ) : isUsd ? (
           <span>
             سعر الصرف: <strong>{usdRate} ₪/$</strong>
+          </span>
+        ) : (
+          <span>
+            سعر الوحدة:{" "}
+            <strong>{activeUnitPrice.toLocaleString("ar-IL")} ₪</strong>
+            {asset.unitLabel ? ` / ${asset.unitLabel}` : ""}
           </span>
         )}
       </div>
 
-      <Button
-        type="button"
-        size="sm"
-        variant="outline"
-        className="mt-3 w-full"
-        disabled={fetchingRate}
-        onClick={fetchLiveRate}
-      >
-        <RefreshCw
-          className={`me-2 h-3.5 w-3.5 ${fetchingRate ? "animate-spin" : ""}`}
-        />
-        {fetchingRate ? "جاري التحديث…" : "تحديث السعر من الإنترنت"}
-      </Button>
-      {rateMeta && (
-        <p className="mt-2 text-[10px] leading-relaxed text-slate-500">{rateMeta}</p>
+      {config.liveRate && (
+        <>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="mt-3 w-full"
+            disabled={fetchingRate}
+            onClick={fetchLiveRate}
+          >
+            <RefreshCw
+              className={`me-2 h-3.5 w-3.5 ${fetchingRate ? "animate-spin" : ""}`}
+            />
+            {fetchingRate ? "جاري التحديث…" : "تحديث السعر من الإنترنت"}
+          </Button>
+          {rateMeta && (
+            <p className="mt-2 text-[10px] leading-relaxed text-slate-500">
+              {rateMeta}
+            </p>
+          )}
+        </>
       )}
 
       <div className="mt-4 border-t border-slate-100 pt-3">
@@ -595,12 +638,8 @@ function AssetCard({
               }`}
             >
               {addMode === "WITHDRAWAL"
-                ? isGold
-                  ? "سحب / بيع ذهب"
-                  : "سحب دولار"
-                : isGold
-                  ? "شراء ذهب"
-                  : "شراء دولار"}
+                ? `سحب ${config.label}`
+                : `شراء ${config.label}`}
             </p>
             {addMode === "WITHDRAWAL" && (
               <p className="text-[10px] text-slate-500">
@@ -610,9 +649,7 @@ function AssetCard({
             )}
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <Label className="text-xs">
-                  {isGold ? "الوزن (غرام)" : "المبلغ ($)"}
-                </Label>
+                <Label className="text-xs">{config.quantityLabel}</Label>
                 <Input
                   type="number"
                   step="0.01"
@@ -640,6 +677,24 @@ function AssetCard({
                 />
               </div>
             </div>
+            {isManual && (
+              <div>
+                <Label className="text-xs">سعر الوحدة (₪)</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  min={0.01}
+                  value={addForm.unitPrice || ""}
+                  onChange={(e) =>
+                    setAddForm((f) => ({
+                      ...f,
+                      unitPrice: Number(e.target.value),
+                    }))
+                  }
+                  className="h-9"
+                />
+              </div>
+            )}
             {addForm.quantity > 0 && (
               <p className="text-xs text-slate-600">
                 القيمة المحسوبة:{" "}
@@ -679,7 +734,7 @@ function AssetCard({
                 key={h.id}
                 assetId={asset.id}
                 entry={h}
-                isGold={isGold}
+                quantityLabel={config.quantityLabel}
                 unitLabel={unitLabel}
               />
             ))}
@@ -715,7 +770,12 @@ export function SavingsSummary({ data }: { data: SavingsSummaryData }) {
   const usdTotal = assets
     .filter((a) => a.kind === "USD")
     .reduce((s, a) => s + a.valueIls, 0);
-  const assetsTotal = goldTotal + usdTotal;
+  const otherAssetsTotal =
+    summary.otherAssetsTotal ??
+    assets
+      .filter((a) => a.kind !== "GOLD" && a.kind !== "USD")
+      .reduce((s, a) => s + a.valueIls, 0);
+  const assetsTotal = goldTotal + usdTotal + otherAssetsTotal;
   const accumulatedTotal = summary.jamiyaPaidTotal + assetsTotal;
   const hasChartData = charts.portfolio.length > 0;
 
@@ -793,7 +853,7 @@ export function SavingsSummary({ data }: { data: SavingsSummaryData }) {
             تفصيل إجمالي المتراكم — {formatCurrency(accumulatedTotal)}
           </p>
           <p className="mt-1 text-xs text-slate-500">
-            جمعيات مدفوعة + قيمة الأصول (ذهب ودولار) — بدون קופות
+            جمعيات مدفوعة + قيمة كل الأصول — بدون קופות
           </p>
           <div className="mt-4 grid gap-3 sm:grid-cols-3">
             {[
@@ -815,6 +875,16 @@ export function SavingsSummary({ data }: { data: SavingsSummaryData }) {
                 color: "text-emerald-700",
                 bg: "bg-emerald-50",
               },
+              ...(otherAssetsTotal > 0
+                ? [
+                    {
+                      label: "أصول أخرى",
+                      value: otherAssetsTotal,
+                      color: "text-indigo-700",
+                      bg: "bg-indigo-50",
+                    },
+                  ]
+                : []),
             ].map((row) => (
               <div
                 key={row.label}
@@ -834,16 +904,16 @@ export function SavingsSummary({ data }: { data: SavingsSummaryData }) {
       <div>
         <h2 className="mb-3 flex items-center gap-2 text-lg font-bold text-slate-900">
           <Coins className="h-5 w-5 text-amber-600" />
-          الأصول — ذهب وعملات
+          الأصول — ذهب، عملات، وأكثر
         </h2>
         {assets.length === 0 ? (
           <Card>
             <CardContent className="py-8 text-center text-sm text-slate-500">
-              لا توجد أصول مسجّلة بعد
+              لا توجد أصول مسجّلة بعد — أضف مصدراً جديداً أدناه
             </CardContent>
           </Card>
         ) : (
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid gap-4 sm:grid-cols-1 md:grid-cols-2">
             {assets.map((asset) => (
               <AssetCard
                 key={asset.id}
@@ -856,17 +926,42 @@ export function SavingsSummary({ data }: { data: SavingsSummaryData }) {
           </div>
         )}
         {assets.length > 0 && (
-          <p className="mt-3 text-center text-sm text-slate-600">
+          <p className="mt-3 text-center text-xs text-slate-600 sm:text-sm">
             إجمالي قيمة الأصول:{" "}
             <span className="font-bold text-emerald-700">
               {formatCurrency(assetsTotal)}
             </span>
-            {" · "}
-            <span className="text-amber-700">ذهب {formatCurrency(goldTotal)}</span>
-            {" · "}
-            <span className="text-emerald-700">دولار {formatCurrency(usdTotal)}</span>
+            {goldTotal > 0 && (
+              <>
+                {" · "}
+                <span className="text-amber-700">
+                  ذهب {formatCurrency(goldTotal)}
+                </span>
+              </>
+            )}
+            {usdTotal > 0 && (
+              <>
+                {" · "}
+                <span className="text-emerald-700">
+                  دولار {formatCurrency(usdTotal)}
+                </span>
+              </>
+            )}
+            {otherAssetsTotal > 0 && (
+              <>
+                {" · "}
+                <span className="text-indigo-700">
+                  أخرى {formatCurrency(otherAssetsTotal)}
+                </span>
+              </>
+            )}
           </p>
         )}
+        <div className="mt-4">
+          <AddAssetSource
+            existingKinds={assets.map((a) => a.kind) as SavingsAssetKindKey[]}
+          />
+        </div>
       </div>
 
       {/* Charts */}

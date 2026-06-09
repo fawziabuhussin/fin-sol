@@ -319,6 +319,9 @@ model SavingsEntry {
 enum SavingsAssetKind {
   GOLD
   USD
+  SILVER
+  CRYPTO
+  CUSTOM
 }
 
 model SavingsAsset {
@@ -329,6 +332,7 @@ model SavingsAsset {
   quantity      Decimal          @db.Decimal(14, 4)
   unitPrice     Decimal          @db.Decimal(14, 4)
   goldKarat     Int?
+  unitLabel     String?
   priceCurrency String           @default("ILS")
   valueIls      Decimal          @db.Decimal(14, 2)
   notes         String?
@@ -338,6 +342,7 @@ model SavingsAsset {
   user    User                @relation(fields: [userId], references: [id], onDelete: Cascade)
   entries SavingsAssetEntry[]
 
+  @@unique([userId, title])
   @@index([userId, kind])
 }
 

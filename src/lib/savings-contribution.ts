@@ -1,5 +1,21 @@
 import { prisma } from "@/lib/db";
 import { CategoryKind, TransactionType } from "@/generated/prisma/client";
+import {
+  assetMovementDescription,
+  type AssetMovementKind,
+} from "@/lib/asset-movement-labels";
+
+export {
+  assetMovementDescription,
+  assetMovementFromEntry,
+  assetMovementShortLabel,
+  isAssetPurchaseDescription,
+  isAssetWithdrawalDescription,
+  parseAssetMovementDescription,
+  type AssetMovementKind,
+  type AssetMovementMeta,
+  type AssetMovementType,
+} from "@/lib/asset-movement-labels";
 
 export async function ensureSavingsCategoryId(userId: string) {
   const existing = await prisma.category.findFirst({
@@ -42,12 +58,12 @@ export async function createSavingsContributionTransaction(params: {
 
 export async function createAssetPurchaseTransaction(params: {
   userId: string;
-  kind: "GOLD" | "USD";
+  kind: AssetMovementKind;
+  title?: string | null;
   amount: number;
   occurredAt: Date;
   notes?: string | null;
 }) {
-  const label = params.kind === "USD" ? "دولار" : "ذهب";
   const categoryId = await ensureSavingsCategoryId(params.userId);
   return prisma.transaction.create({
     data: {
@@ -56,26 +72,24 @@ export async function createAssetPurchaseTransaction(params: {
       amount: params.amount,
       occurredAt: params.occurredAt,
       categoryId,
-      description: `ادخار — ${label}`,
+      description: assetMovementDescription("PURCHASE", {
+        kind: params.kind,
+        title: params.title,
+      }),
       notes: params.notes ?? null,
       currency: "ILS",
     },
   });
 }
 
-export function isAssetPurchaseDescription(description: string | null | undefined) {
-  if (!description) return false;
-  return /ادخار — (دولار|ذهب)/.test(description);
-}
-
 export async function createAssetWithdrawalTransaction(params: {
   userId: string;
-  kind: "GOLD" | "USD";
+  kind: AssetMovementKind;
+  title?: string | null;
   amount: number;
   occurredAt: Date;
   notes?: string | null;
 }) {
-  const label = params.kind === "USD" ? "دولار" : "ذهب";
   const categoryId = await ensureSavingsCategoryId(params.userId);
   return prisma.transaction.create({
     data: {
@@ -84,14 +98,12 @@ export async function createAssetWithdrawalTransaction(params: {
       amount: params.amount,
       occurredAt: params.occurredAt,
       categoryId,
-      description: `سحب ادخار — ${label}`,
+      description: assetMovementDescription("WITHDRAWAL", {
+        kind: params.kind,
+        title: params.title,
+      }),
       notes: params.notes ?? null,
       currency: "ILS",
     },
   });
-}
-
-export function isAssetWithdrawalDescription(description: string | null | undefined) {
-  if (!description) return false;
-  return /سحب ادخار — (دولار|ذهب)/.test(description);
 }

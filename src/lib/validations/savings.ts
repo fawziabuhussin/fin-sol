@@ -39,12 +39,21 @@ export const savingsBulkEntrySchema = z.object({
 
 export type SavingsEntryInput = z.infer<typeof savingsEntrySchema>;
 
+export const savingsAssetKindSchema = z.enum([
+  "GOLD",
+  "USD",
+  "SILVER",
+  "CRYPTO",
+  "CUSTOM",
+]);
+
 export const savingsAssetSchema = z.object({
-  kind: z.enum(["GOLD", "USD"]),
+  kind: savingsAssetKindSchema,
   title: z.string().min(1).max(120),
-  quantity: z.coerce.number().min(0),
-  unitPrice: z.coerce.number().min(0),
+  quantity: z.coerce.number().min(0).default(0),
+  unitPrice: z.coerce.number().min(0).default(0),
   goldKarat: z.coerce.number().int().min(14).max(24).optional(),
+  unitLabel: z.string().max(40).optional().or(z.literal("")),
   priceCurrency: z.enum(["ILS", "USD"]).default("ILS"),
   notes: z.string().max(300).optional().or(z.literal("")),
 });
@@ -61,6 +70,7 @@ export const savingsAssetEntrySchema = z.object({
   type: savingsAssetEntryTypeSchema.default("PURCHASE"),
   quantity: z.coerce.number().positive("الكمية يجب أن تكون أكبر من صفر"),
   purchasedAt: z.string().min(1, "التاريخ مطلوب"),
+  unitPrice: z.coerce.number().min(0).optional(),
   notes: z.string().max(300).optional().or(z.literal("")),
 });
 
@@ -70,7 +80,7 @@ export type SavingsAssetEntryInput = z.infer<typeof savingsAssetEntrySchema>;
 
 export const savingsAssetPurchaseSchema = z
   .object({
-    kind: z.enum(["GOLD", "USD"]),
+    kind: savingsAssetKindSchema,
     quantity: z.coerce.number().positive(),
     unitPrice: z.coerce.number().min(0).optional(),
     goldKarat: z.coerce.number().int().min(14).max(24).optional(),

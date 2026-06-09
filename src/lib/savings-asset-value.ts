@@ -15,7 +15,7 @@ export function normalizeUsdRate(unitPrice: number): number {
 }
 
 export function computeAssetValueIls(
-  kind: SavingsAssetKind | "GOLD" | "USD",
+  kind: SavingsAssetKind | string,
   quantity: number,
   unitPrice: number,
   /** When set, USD is always valued at this live ₪/$ rate (ignores stored unitPrice mistakes). */

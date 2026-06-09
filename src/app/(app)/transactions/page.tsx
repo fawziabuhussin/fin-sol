@@ -1,6 +1,10 @@
 import { requireUser } from "@/lib/session";
 import { getLookups, listTransactions } from "@/lib/tenant-data";
 import { formatUtcDate } from "@/lib/dates";
+import {
+  assetMovementFromEntry,
+  parseAssetMovementDescription,
+} from "@/lib/asset-movement-labels";
 import { decimalToNumber, parseIntSafe } from "@/lib/utils";
 import { TransactionsPageClient } from "@/components/pages/transactions-page-client";
 import { CategoryKind } from "@/generated/prisma/client";
@@ -68,24 +72,31 @@ export default async function TransactionsPage({
         payees: lookups.payees.map((x) => ({ id: x.id, name: x.name })),
         paymentMethods: lookups.paymentMethods.map((x) => ({ id: x.id, name: x.name })),
       }}
-      data={items.map((item) => ({
-        id: item.id,
-        type: item.type,
-        amount: decimalToNumber(item.amount),
-        occurredAt: item.occurredAt.toISOString().slice(0, 10),
-        occurredAtLabel: formatUtcDate(item.occurredAt),
-        description: item.description,
-        notes: item.notes,
-        categoryId: item.categoryId,
-        projectId: item.projectId,
-        payeeId: item.payeeId,
-        paymentMethodId: item.paymentMethodId,
-        categoryName: item.category?.name ?? "—",
-        projectName: item.project?.title ?? "—",
-        paymentMethodName: item.paymentMethod?.name ?? "—",
-        salarySlipId: item.salarySlipId,
-        employerId: item.salarySlip?.employerId ?? null,
-      }))}
+      data={items.map((item) => {
+        const assetMovement = item.savingsAssetEntry
+          ? assetMovementFromEntry(item.savingsAssetEntry)
+          : parseAssetMovementDescription(item.description);
+        return {
+          id: item.id,
+          type: item.type,
+          amount: decimalToNumber(item.amount),
+          occurredAt: item.occurredAt.toISOString().slice(0, 10),
+          occurredAtLabel: formatUtcDate(item.occurredAt),
+          description: item.description,
+          notes: item.notes,
+          categoryId: item.categoryId,
+          projectId: item.projectId,
+          payeeId: item.payeeId,
+          paymentMethodId: item.paymentMethodId,
+          categoryName: item.category?.name ?? "—",
+          projectName: item.project?.title ?? "—",
+          paymentMethodName: item.paymentMethod?.name ?? "—",
+          salarySlipId: item.salarySlipId,
+          employerId: item.salarySlip?.employerId ?? null,
+          assetEntryId: item.savingsAssetEntry?.id ?? null,
+          assetMovement,
+        };
+      })}
     />
   );
 }

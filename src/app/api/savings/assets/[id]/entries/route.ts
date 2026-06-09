@@ -32,6 +32,7 @@ export async function POST(
       type: parsed.data.type,
       quantity: parsed.data.quantity,
       purchasedAt: parsed.data.purchasedAt,
+      unitPrice: parsed.data.unitPrice,
       notes: parsed.data.notes,
     });
     if (!entry) {
@@ -43,6 +44,12 @@ export async function POST(
     if (error instanceof Error && error.message === "INSUFFICIENT_BALANCE") {
       return NextResponse.json(
         { error: "الكمية أكبر من الرصيد المتاح" },
+        { status: 400 }
+      );
+    }
+    if (error instanceof Error && error.message === "UNIT_PRICE_REQUIRED") {
+      return NextResponse.json(
+        { error: "أدخل سعر الوحدة بالشيكل" },
         { status: 400 }
       );
     }

@@ -18,7 +18,7 @@ export default async function SavingsPage() {
       <div>
         <h1 className="text-2xl font-extrabold">الجمعية والادخار</h1>
         <p className="mt-1 text-sm text-slate-500">
-          ملخّص شامل للجمعيات والأصول (ذهب ودولار)
+          جمعيات، ذهب، دولار، فضة، عملات رقمية، وأصول مخصّصة
         </p>
       </div>
 

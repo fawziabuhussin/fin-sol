@@ -11,6 +11,8 @@ import {
   ArrowUpDown,
   ChevronLeft,
   ChevronRight,
+  Coins,
+  PiggyBank,
   Plus,
   Search,
   Trash2,
@@ -18,6 +20,10 @@ import {
   Briefcase,
   X,
 } from "lucide-react";
+import {
+  assetMovementShortLabel,
+  type AssetMovementMeta,
+} from "@/lib/asset-movement-labels";
 import { DataTable } from "@/components/tables/data-table";
 import { RowActions } from "@/components/tables/row-actions";
 import { TransactionSheet } from "@/components/forms/transaction-sheet";
@@ -45,7 +51,47 @@ type TransactionRow = {
   paymentMethodName: string;
   salarySlipId: string | null;
   employerId: string | null;
+  assetEntryId: string | null;
+  assetMovement: AssetMovementMeta | null;
 };
+
+function AssetMovementBadges({ movement }: { movement: AssetMovementMeta }) {
+  const isUsd = movement.asset === "USD";
+  const isPurchase = movement.type === "PURCHASE";
+  return (
+    <>
+      <span
+        className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+          isPurchase
+            ? "bg-indigo-50 text-indigo-700"
+            : "bg-red-50 text-red-700"
+        }`}
+      >
+        {assetMovementShortLabel(movement)}
+      </span>
+      {movement.asset === "USD" && (
+        <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+          $
+        </span>
+      )}
+      {movement.asset === "GOLD" && (
+        <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+          Au
+        </span>
+      )}
+      {movement.asset === "SILVER" && (
+        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-700">
+          Ag
+        </span>
+      )}
+      {movement.asset === "CRYPTO" && (
+        <span className="rounded-full bg-violet-50 px-2 py-0.5 text-[10px] font-semibold text-violet-700">
+          ₿
+        </span>
+      )}
+    </>
+  );
+}
 
 type Option = { id: string; name: string };
 
@@ -84,6 +130,7 @@ export function TransactionsPageClient({
   const [q, setQ] = useState(filters.q);
   const [isPending, startTransition] = useTransition();
   const [salaryBlock, setSalaryBlock] = useState<TransactionRow | null>(null);
+  const [assetBlock, setAssetBlock] = useState<TransactionRow | null>(null);
   const [shakeRowId, setShakeRowId] = useState<string | null>(null);
   const [incomeSelection, setIncomeSelection] = useState<RowSelectionState>({});
   const [expenseSelection, setExpenseSelection] = useState<RowSelectionState>({});
@@ -152,6 +199,24 @@ export function TransactionsPageClient({
     setTimeout(() => setShakeRowId(null), 500);
   };
 
+  const blockAssetEdit = (row: TransactionRow) => {
+    setShakeRowId(row.id);
+    setAssetBlock(row);
+    setTimeout(() => setShakeRowId(null), 500);
+  };
+
+  const guardRowAction = (row: TransactionRow, action: () => void) => {
+    if (row.salarySlipId) {
+      blockSalaryEdit(row);
+      return;
+    }
+    if (row.assetEntryId) {
+      blockAssetEdit(row);
+      return;
+    }
+    action();
+  };
+
   const selectColumn = (
     selection: RowSelectionState,
     setSelection: (value: RowSelectionState) => void,
@@ -215,7 +280,7 @@ export function TransactionsPageClient({
         incomeSelection,
         setIncomeSelection,
         incomeRows,
-        (row) => !row.salarySlipId
+        (row) => !row.salarySlipId && !row.assetEntryId
       ),
       {
         accessorKey: "occurredAtLabel",
@@ -262,6 +327,9 @@ export function TransactionsPageClient({
         cell: ({ row }) => (
           <div className="flex flex-wrap items-center gap-2">
             <span>{row.original.description}</span>
+            {row.original.assetMovement && (
+              <AssetMovementBadges movement={row.original.assetMovement} />
+            )}
             {row.original.salarySlipId && (
               <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">
                 من الراتب
@@ -277,15 +345,9 @@ export function TransactionsPageClient({
         header: "",
         cell: ({ row }) => (
           <RowActions
-            onEdit={() =>
-              row.original.salarySlipId
-                ? blockSalaryEdit(row.original)
-                : openEdit(row.original)
-            }
+            onEdit={() => guardRowAction(row.original, () => openEdit(row.original))}
             onDelete={() =>
-              row.original.salarySlipId
-                ? blockSalaryEdit(row.original)
-                : deleteRow(row.original.id)
+              guardRowAction(row.original, () => deleteRow(row.original.id))
             }
           />
         ),
@@ -297,7 +359,12 @@ export function TransactionsPageClient({
 
   const expenseColumns = useMemo<ColumnDef<TransactionRow>[]>(
     () => [
-      selectColumn(expenseSelection, setExpenseSelection, expenseRows, () => true),
+      selectColumn(
+        expenseSelection,
+        setExpenseSelection,
+        expenseRows,
+        (row) => !row.assetEntryId
+      ),
       {
         accessorKey: "occurredAtLabel",
         header: ({ column }) => (
@@ -338,16 +405,9 @@ export function TransactionsPageClient({
         cell: ({ row }) => (
           <div className="flex flex-wrap items-center gap-2">
             <span>{row.original.description}</span>
-            {row.original.description?.includes("دولار") && (
-              <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
-                $
-              </span>
-            )}
-            {row.original.description?.includes("ذهب") && (
-              <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
-                Au
-              </span>
-            )}
+            {row.original.assetMovement ? (
+              <AssetMovementBadges movement={row.original.assetMovement} />
+            ) : null}
           </div>
         ),
       },
@@ -357,8 +417,10 @@ export function TransactionsPageClient({
         header: "",
         cell: ({ row }) => (
           <RowActions
-            onEdit={() => openEdit(row.original)}
-            onDelete={() => deleteRow(row.original.id)}
+            onEdit={() => guardRowAction(row.original, () => openEdit(row.original))}
+            onDelete={() =>
+              guardRowAction(row.original, () => deleteRow(row.original.id))
+            }
           />
         ),
       },
@@ -593,7 +655,9 @@ export function TransactionsPageClient({
               getRowId={(row) => row.id}
               rowSelection={incomeSelection}
               onRowSelectionChange={setIncomeSelection}
-              enableRowSelection={(row) => !row.original.salarySlipId}
+              enableRowSelection={(row) =>
+                !row.original.salarySlipId && !row.original.assetEntryId
+              }
             />
           )}
         </CardContent>
@@ -697,6 +761,63 @@ export function TransactionsPageClient({
       {isPending && <p className="text-xs text-slate-500">جاري التحديث...</p>}
 
       <AnimatePresence>
+        {assetBlock && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+            onClick={() => setAssetBlock(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, y: 8 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 8 }}
+              className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-violet-50 text-violet-700">
+                  {assetBlock.assetMovement?.asset === "USD" ? (
+                    <Wallet className="h-5 w-5" />
+                  ) : (
+                    <Coins className="h-5 w-5" />
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setAssetBlock(null)}
+                  className="rounded-lg p-1 text-slate-400 hover:bg-slate-100"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+              <h2 className="mt-3 text-lg font-bold text-slate-900">
+                تعديل من صفحة الادخار
+              </h2>
+              <p className="mt-2 text-sm text-slate-600">
+                معاملة <strong>{assetBlock.description}</strong> مرتبطة بحركة
+                أصول (شراء أو سحب). لتغيير المبلغ أو التاريخ، عدّلها من سجل
+                الحركات في صفحة الادخار.
+              </p>
+              <div className="mt-5 flex flex-col gap-2 sm:flex-row">
+                <Button asChild className="flex-1">
+                  <Link href="/savings">
+                    <PiggyBank className="me-2 h-4 w-4" />
+                    فتح الادخار
+                  </Link>
+                </Button>
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => setAssetBlock(null)}
+                >
+                  حسناً
+                </Button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
         {salaryBlock && (
           <motion.div
             initial={{ opacity: 0 }}

@@ -1444,6 +1444,13 @@ export async function listTransactions(params: {
         payee: true,
         paymentMethod: true,
         salarySlip: { include: { employer: true } },
+        savingsAssetEntry: {
+          select: {
+            id: true,
+            quantity: true,
+            asset: { select: { kind: true } },
+          },
+        },
       },
       orderBy: { occurredAt: "desc" },
       skip,
@@ -1612,11 +1619,12 @@ export async function getSavingsSummary(
     );
     return {
       id: asset.id,
-      kind: asset.kind as "GOLD" | "USD",
+      kind: asset.kind,
       title: asset.title,
       quantity,
       unitPrice,
       goldKarat: asset.goldKarat ?? 21,
+      unitLabel: asset.unitLabel,
       priceCurrency: asset.priceCurrency,
       valueIls,
       updatedAt: asset.updatedAt.toISOString().slice(0, 10),
@@ -1639,15 +1647,18 @@ export async function getSavingsSummary(
 
   let goldTotal: number;
   let usdTotal: number;
+  let otherAssetsTotal: number;
   if (throughEnd) {
     goldTotal = 0;
     usdTotal = 0;
+    otherAssetsTotal = 0;
     for (const asset of assets) {
       for (const entry of asset.entries) {
         if (entry.purchasedAt > throughEnd) continue;
         const value = decimalToNumber(entry.valueIls);
         if (asset.kind === "GOLD") goldTotal += value;
-        else usdTotal += value;
+        else if (asset.kind === "USD") usdTotal += value;
+        else otherAssetsTotal += value;
       }
     }
   } else {
@@ -1657,8 +1668,11 @@ export async function getSavingsSummary(
     usdTotal = assetItems
       .filter((a) => a.kind === "USD")
       .reduce((sum, a) => sum + a.valueIls, 0);
+    otherAssetsTotal = assetItems
+      .filter((a) => a.kind !== "GOLD" && a.kind !== "USD")
+      .reduce((sum, a) => sum + a.valueIls, 0);
   }
-  const assetsTotal = goldTotal + usdTotal;
+  const assetsTotal = goldTotal + usdTotal + otherAssetsTotal;
   const accumulatedTotal = jamiyaPaidTotal + assetsTotal;
   const remainingToPay = Math.max(0, committedTotal - jamiyaPaidTotal);
 
@@ -1668,6 +1682,9 @@ export async function getSavingsSummary(
       : []),
     ...(goldTotal > 0 ? [{ name: "ذهب", value: goldTotal, fill: "#f59e0b" }] : []),
     ...(usdTotal > 0 ? [{ name: "دولار", value: usdTotal, fill: "#059669" }] : []),
+    ...(otherAssetsTotal > 0
+      ? [{ name: "أصول أخرى", value: otherAssetsTotal, fill: "#6366f1" }]
+      : []),
   ];
 
   const commitmentChart = [
@@ -1690,6 +1707,7 @@ export async function getSavingsSummary(
       assetsTotal,
       goldTotal,
       usdTotal,
+      otherAssetsTotal,
       kupotTotal: 0,
     },
     liveRates: marketRates

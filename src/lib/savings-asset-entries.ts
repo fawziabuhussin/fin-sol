@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { isLocalTodayDate } from "@/lib/dates";
 import { getMarketRates } from "@/lib/market-rates";
+import { assetMovementDescription } from "@/lib/asset-movement-labels";
 import {
   createAssetPurchaseTransaction,
   createAssetWithdrawalTransaction,
@@ -16,6 +17,13 @@ async function resolveUnitPrice(
   goldKarat: number,
   explicitUnitPrice?: number
 ) {
+  if (asset.kind === "SILVER" || asset.kind === "CRYPTO" || asset.kind === "CUSTOM") {
+    if (explicitUnitPrice != null && explicitUnitPrice > 0) return explicitUnitPrice;
+    const stored = Number(asset.unitPrice);
+    if (stored > 0) return stored;
+    throw new Error("UNIT_PRICE_REQUIRED");
+  }
+
   if (asset.kind === "GOLD") {
     if (explicitUnitPrice != null && explicitUnitPrice > 0) return explicitUnitPrice;
     const rates = await getMarketRates(goldKarat as 21);
@@ -79,7 +87,14 @@ async function upsertEntryTransaction(params: {
       } else {
         await prisma.transaction.update({
           where: { id: params.existingTransactionId },
-          data: { amount, occurredAt: params.purchasedAt },
+          data: {
+            amount,
+            occurredAt: params.purchasedAt,
+            description: assetMovementDescription(
+              params.entryType,
+              params.asset
+            ),
+          },
         });
         return params.existingTransactionId;
       }
@@ -91,6 +106,7 @@ async function upsertEntryTransaction(params: {
       ? await createAssetWithdrawalTransaction({
           userId: params.userId,
           kind: params.asset.kind,
+          title: params.asset.title,
           amount,
           occurredAt: params.purchasedAt,
           notes: params.notes ?? null,
@@ -98,6 +114,7 @@ async function upsertEntryTransaction(params: {
       : await createAssetPurchaseTransaction({
           userId: params.userId,
           kind: params.asset.kind,
+          title: params.asset.title,
           amount,
           occurredAt: params.purchasedAt,
           notes: params.notes ?? null,
@@ -221,6 +238,7 @@ export async function updateAssetEntry(params: {
   entryId: string;
   quantity?: number;
   purchasedAt?: string;
+  unitPrice?: number;
   notes?: string | null;
 }) {
   const asset = await prisma.savingsAsset.findFirst({
@@ -243,7 +261,18 @@ export async function updateAssetEntry(params: {
   const goldKarat = asset.goldKarat ?? 21;
 
   let unitPrice = Number(existing.unitPrice);
-  if (asset.kind === "GOLD" && params.purchasedAt !== undefined) {
+  if (
+    asset.kind === "SILVER" ||
+    asset.kind === "CRYPTO" ||
+    asset.kind === "CUSTOM"
+  ) {
+    unitPrice = await resolveUnitPrice(
+      asset,
+      purchasedAtStr,
+      goldKarat,
+      params.unitPrice
+    );
+  } else if (asset.kind === "GOLD" && params.purchasedAt !== undefined) {
     unitPrice = await resolveUnitPrice(asset, purchasedAtStr, goldKarat);
   } else if (
     asset.kind === "USD" &&
@@ -251,6 +280,8 @@ export async function updateAssetEntry(params: {
     isLocalTodayDate(purchasedAtStr)
   ) {
     unitPrice = await resolveUnitPrice(asset, purchasedAtStr, goldKarat);
+  } else if (params.unitPrice != null && params.unitPrice > 0) {
+    unitPrice = params.unitPrice;
   }
 
   const liveRates = asset.kind === "USD" ? await getMarketRates().catch(() => null) : null;

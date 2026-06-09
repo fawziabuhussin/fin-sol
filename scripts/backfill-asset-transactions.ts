@@ -1,12 +1,15 @@
 /**
- * Create SAVINGS_CONTRIBUTION transactions for asset entries missing a link.
+ * Create transactions for asset entries missing a link.
  * Run: npx tsx scripts/backfill-asset-transactions.ts
  */
 import "dotenv/config";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Pool } from "pg";
 import { PrismaClient } from "../src/generated/prisma/client";
-import { createAssetPurchaseTransaction } from "../src/lib/savings-contribution";
+import {
+  createAssetPurchaseTransaction,
+  createAssetWithdrawalTransaction,
+} from "../src/lib/savings-contribution";
 import { decimalToNumber } from "../src/lib/utils";
 
 async function main() {
@@ -21,16 +24,26 @@ async function main() {
 
   let created = 0;
   for (const entry of entries) {
-    const amount = decimalToNumber(entry.valueIls);
+    const signedValue = decimalToNumber(entry.valueIls);
+    const amount = Math.abs(signedValue);
     if (amount <= 0) continue;
 
-    const tx = await createAssetPurchaseTransaction({
-      userId: entry.asset.userId,
-      kind: entry.asset.kind,
-      amount,
-      occurredAt: entry.purchasedAt,
-      notes: entry.notes,
-    });
+    const isWithdrawal = decimalToNumber(entry.quantity) < 0;
+    const tx = isWithdrawal
+      ? await createAssetWithdrawalTransaction({
+          userId: entry.asset.userId,
+          kind: entry.asset.kind,
+          amount,
+          occurredAt: entry.purchasedAt,
+          notes: entry.notes,
+        })
+      : await createAssetPurchaseTransaction({
+          userId: entry.asset.userId,
+          kind: entry.asset.kind,
+          amount,
+          occurredAt: entry.purchasedAt,
+          notes: entry.notes,
+        });
 
     await prisma.savingsAssetEntry.update({
       where: { id: entry.id },
@@ -39,7 +52,7 @@ async function main() {
 
     created++;
     console.log(
-      `  ${entry.purchasedAt.toISOString().slice(0, 10)} ${entry.asset.kind} ₪${amount} → ${tx.id}`
+      `  ${entry.purchasedAt.toISOString().slice(0, 10)} ${isWithdrawal ? "سحب" : "شراء"} ${entry.asset.kind} ₪${amount} → ${tx.id}`
     );
   }
 
