@@ -6,6 +6,7 @@ import {
   createAssetPurchaseTransaction,
   createAssetWithdrawalTransaction,
 } from "@/lib/savings-contribution";
+import { upsertUsdBankFeeTransaction } from "@/lib/usd-bank-fee";
 import { computeAssetValueIls } from "@/lib/savings-asset-value";
 import type { SavingsAsset } from "@/generated/prisma/client";
 
@@ -159,6 +160,39 @@ export async function syncAssetFromEntries(assetId: string) {
   });
 }
 
+async function syncUsdBankFee(params: {
+  userId: string;
+  asset: SavingsAsset;
+  entryType: AssetEntryType;
+  bankFeeIls?: number | null;
+  dollarQuantity: number;
+  purchasedAt: Date;
+  existingFeeTransactionId?: string | null;
+}) {
+  if (params.asset.kind !== "USD" || params.entryType !== "PURCHASE") {
+    if (params.existingFeeTransactionId) {
+      await prisma.transaction
+        .delete({ where: { id: params.existingFeeTransactionId } })
+        .catch(() => null);
+    }
+    return { feeTransactionId: null as string | null, bankFeeIls: null as number | null };
+  }
+
+  const fee = params.bankFeeIls != null && params.bankFeeIls > 0 ? params.bankFeeIls : 0;
+  const feeTransactionId = await upsertUsdBankFeeTransaction({
+    userId: params.userId,
+    amount: fee,
+    occurredAt: params.purchasedAt,
+    dollarQuantity: params.dollarQuantity,
+    existingTransactionId: params.existingFeeTransactionId,
+  });
+
+  return {
+    feeTransactionId,
+    bankFeeIls: fee > 0 ? fee : null,
+  };
+}
+
 export async function addAssetEntry(params: {
   userId: string;
   assetId: string;
@@ -167,6 +201,7 @@ export async function addAssetEntry(params: {
   purchasedAt: string;
   notes?: string | null;
   unitPrice?: number;
+  bankFeeIls?: number;
 }) {
   const asset = await prisma.savingsAsset.findFirst({
     where: { id: params.assetId, userId: params.userId },
@@ -203,6 +238,15 @@ export async function addAssetEntry(params: {
   const signedValue = entryType === "WITHDRAWAL" ? -valueIlsAbs : valueIlsAbs;
   const purchasedAt = new Date(params.purchasedAt);
 
+  const { feeTransactionId, bankFeeIls } = await syncUsdBankFee({
+    userId: params.userId,
+    asset,
+    entryType,
+    bankFeeIls: params.bankFeeIls,
+    dollarQuantity: absQty,
+    purchasedAt,
+  });
+
   const entry = await prisma.savingsAssetEntry.create({
     data: {
       assetId: params.assetId,
@@ -211,6 +255,8 @@ export async function addAssetEntry(params: {
       valueIls: signedValue,
       purchasedAt,
       notes: params.notes || null,
+      bankFeeIls,
+      feeTransactionId,
     },
   });
 
@@ -240,6 +286,7 @@ export async function updateAssetEntry(params: {
   purchasedAt?: string;
   unitPrice?: number;
   notes?: string | null;
+  bankFeeIls?: number;
 }) {
   const asset = await prisma.savingsAsset.findFirst({
     where: { id: params.assetId, userId: params.userId },
@@ -302,6 +349,23 @@ export async function updateAssetEntry(params: {
     throw new Error("INSUFFICIENT_BALANCE");
   }
 
+  const bankFee =
+    params.bankFeeIls !== undefined
+      ? params.bankFeeIls
+      : existing.bankFeeIls != null
+        ? Number(existing.bankFeeIls)
+        : null;
+
+  const { feeTransactionId, bankFeeIls } = await syncUsdBankFee({
+    userId: params.userId,
+    asset,
+    entryType,
+    bankFeeIls: bankFee,
+    dollarQuantity: absQty,
+    purchasedAt,
+    existingFeeTransactionId: existing.feeTransactionId,
+  });
+
   const entry = await prisma.savingsAssetEntry.update({
     where: { id: params.entryId },
     data: {
@@ -309,6 +373,8 @@ export async function updateAssetEntry(params: {
       unitPrice,
       valueIls: signedValue,
       purchasedAt,
+      bankFeeIls,
+      feeTransactionId,
       ...(params.notes !== undefined ? { notes: params.notes || null } : {}),
     },
   });
@@ -352,6 +418,11 @@ export async function deleteAssetEntry(params: {
   if (existing.transactionId) {
     await prisma.transaction
       .delete({ where: { id: existing.transactionId } })
+      .catch(() => null);
+  }
+  if (existing.feeTransactionId) {
+    await prisma.transaction
+      .delete({ where: { id: existing.feeTransactionId } })
       .catch(() => null);
   }
 

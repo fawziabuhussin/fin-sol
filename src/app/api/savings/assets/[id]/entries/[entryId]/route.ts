@@ -28,6 +28,7 @@ export async function PATCH(
       quantity: parsed.data.quantity,
       purchasedAt: parsed.data.purchasedAt,
       unitPrice: parsed.data.unitPrice,
+      bankFeeIls: parsed.data.bankFeeIls,
       notes: parsed.data.notes,
     });
     if (!entry) {

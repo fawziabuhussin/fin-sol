@@ -102,6 +102,7 @@ export type SavingsSummaryData = {
       quantity: number;
       unitPrice: number;
       valueIls: number;
+      bankFeeIls: number | null;
       purchasedAt: string;
       notes: string | null;
     }[];
@@ -150,11 +151,13 @@ function AssetEntryRow({
   entry,
   quantityLabel,
   unitLabel,
+  showBankFee,
 }: {
   assetId: string;
   entry: AssetHistoryRow;
   quantityLabel: string;
   unitLabel: string;
+  showBankFee?: boolean;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -163,6 +166,7 @@ function AssetEntryRow({
   const [form, setForm] = useState({
     quantity: entry.quantity,
     purchasedAt: entry.purchasedAt,
+    bankFeeIls: entry.bankFeeIls ?? 0,
     notes: entry.notes ?? "",
   });
 
@@ -177,7 +181,14 @@ function AssetEntryRow({
         {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(form),
+          body: JSON.stringify({
+            quantity: form.quantity,
+            purchasedAt: form.purchasedAt,
+            notes: form.notes,
+            ...(showBankFee && !isWithdrawal
+              ? { bankFeeIls: form.bankFeeIls }
+              : {}),
+          }),
         }
       );
       if (!res.ok) {
@@ -237,9 +248,30 @@ function AssetEntryRow({
             />
           </div>
         </div>
+        {showBankFee && !isWithdrawal && (
+          <div>
+            <Label className="text-[10px]">رسوم البنك (₪)</Label>
+            <Input
+              type="number"
+              step="0.01"
+              min={0}
+              value={form.bankFeeIls || ""}
+              onChange={(e) =>
+                setForm((f) => ({
+                  ...f,
+                  bankFeeIls: Number(e.target.value),
+                }))
+              }
+              className="h-8 text-xs"
+            />
+          </div>
+        )}
         <p className="text-[10px] text-slate-500">
-          القيمة تُحسب تلقائياً — {formatCurrency(entry.valueIls)} (عند الحفظ
-          تُحدَّث)
+          القيمة تُحسب تلقائياً — {formatCurrency(entry.valueIls)}
+          {showBankFee && !isWithdrawal && entry.bankFeeIls
+            ? ` + رسوم ${formatCurrency(entry.bankFeeIls)}`
+            : ""}{" "}
+          (عند الحفظ تُحدَّث)
         </p>
         <div className="flex gap-1">
           <Button
@@ -284,12 +316,17 @@ function AssetEntryRow({
         </span>
       </div>
       <span
-        className={`shrink-0 font-semibold ${
+        className={`shrink-0 text-end font-semibold ${
           isWithdrawal ? "text-red-700" : "text-slate-800"
         }`}
       >
         {isWithdrawal ? "−" : ""}
         {formatCurrency(entry.valueIls)}
+        {!isWithdrawal && entry.bankFeeIls != null && entry.bankFeeIls > 0 && (
+          <span className="block text-[10px] font-normal text-slate-500">
+            +{formatCurrency(entry.bankFeeIls)} رسوم
+          </span>
+        )}
       </span>
       <button
         type="button"
@@ -332,6 +369,7 @@ function AssetCard({
     quantity: 0,
     purchasedAt: localTodayIso(),
     unitPrice: asset.unitPrice || 0,
+    bankFeeIls: 0,
     notes: "",
   });
   const [rateMeta, setRateMeta] = useState<string | null>(null);
@@ -445,6 +483,9 @@ function AssetCard({
           notes: addForm.notes,
           type: addMode,
           ...(isManual ? { unitPrice: addForm.unitPrice } : {}),
+          ...(isUsd && addMode === "PURCHASE" && addForm.bankFeeIls > 0
+            ? { bankFeeIls: addForm.bankFeeIls }
+            : {}),
         }),
       });
       if (!res.ok) {
@@ -459,6 +500,7 @@ function AssetCard({
         quantity: 0,
         purchasedAt: localTodayIso(),
         unitPrice: asset.unitPrice || 0,
+        bankFeeIls: 0,
         notes: "",
       });
       setAddMode(null);
@@ -695,17 +737,58 @@ function AssetCard({
                 />
               </div>
             )}
+            {isUsd && addMode === "PURCHASE" && (
+              <div>
+                <Label className="text-xs">رسوم البنك (₪)</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  min={0}
+                  placeholder="مثال: 16.1"
+                  value={addForm.bankFeeIls || ""}
+                  onChange={(e) =>
+                    setAddForm((f) => ({
+                      ...f,
+                      bankFeeIls: Number(e.target.value),
+                    }))
+                  }
+                  className="h-9"
+                />
+                <p className="mt-0.5 text-[10px] text-slate-500">
+                  تُسجَّل كمصروف (رسوم بنكية) وتُخصم من صافي الدخل
+                </p>
+              </div>
+            )}
             {addForm.quantity > 0 && (
               <p className="text-xs text-slate-600">
-                القيمة المحسوبة:{" "}
-                <strong
-                  className={
-                    addMode === "WITHDRAWAL" ? "text-red-700" : "text-slate-900"
-                  }
-                >
-                  {addMode === "WITHDRAWAL" ? "−" : ""}
-                  {formatCurrency(addPreviewValue)}
-                </strong>
+                {isUsd && addMode === "PURCHASE" && addForm.bankFeeIls > 0 ? (
+                  <>
+                    قيمة الدولار:{" "}
+                    <strong>{formatCurrency(addPreviewValue)}</strong>
+                    {" · "}
+                    رسوم البنك:{" "}
+                    <strong>{formatCurrency(addForm.bankFeeIls)}</strong>
+                    {" · "}
+                    الإجمالي من الحساب:{" "}
+                    <strong>
+                      {formatCurrency(addPreviewValue + addForm.bankFeeIls)}
+                    </strong>
+                  </>
+                ) : (
+                  <>
+                    القيمة المحسوبة:{" "}
+                    <strong
+                      className={
+                        addMode === "WITHDRAWAL"
+                          ? "text-red-700"
+                          : "text-slate-900"
+                      }
+                    >
+                      {addMode === "WITHDRAWAL" ? "−" : ""}
+                      {formatCurrency(addPreviewValue)}
+                    </strong>
+                  </>
+                )}
               </p>
             )}
             <Button
@@ -736,6 +819,7 @@ function AssetCard({
                 entry={h}
                 quantityLabel={config.quantityLabel}
                 unitLabel={unitLabel}
+                showBankFee={isUsd}
               />
             ))}
           </div>

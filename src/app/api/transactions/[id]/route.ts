@@ -29,7 +29,7 @@ export async function PATCH(
     }
 
     const linkedAssetEntry = await prisma.savingsAssetEntry.findFirst({
-      where: { transactionId: id },
+      where: { OR: [{ transactionId: id }, { feeTransactionId: id }] },
     });
     if (linkedAssetEntry) {
       return NextResponse.json(
@@ -115,7 +115,7 @@ export async function DELETE(
     }
 
     const linkedAssetEntry = await prisma.savingsAssetEntry.findFirst({
-      where: { transactionId: id },
+      where: { OR: [{ transactionId: id }, { feeTransactionId: id }] },
     });
     if (linkedAssetEntry) {
       return NextResponse.json(

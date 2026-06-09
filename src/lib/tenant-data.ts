@@ -1451,6 +1451,13 @@ export async function listTransactions(params: {
             asset: { select: { kind: true } },
           },
         },
+        savingsAssetEntryFee: {
+          select: {
+            id: true,
+            quantity: true,
+            asset: { select: { kind: true } },
+          },
+        },
       },
       orderBy: { occurredAt: "desc" },
       skip,
@@ -1638,6 +1645,8 @@ export async function getSavingsSummary(
           quantity: Math.abs(entryQty),
           unitPrice: entryUnitPrice,
           valueIls: Math.abs(entryValue),
+          bankFeeIls:
+            e.bankFeeIls != null ? decimalToNumber(e.bankFeeIls) : null,
           purchasedAt: e.purchasedAt.toISOString().slice(0, 10),
           notes: e.notes,
         };

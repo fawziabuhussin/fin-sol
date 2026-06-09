@@ -71,6 +71,8 @@ export const savingsAssetEntrySchema = z.object({
   quantity: z.coerce.number().positive("الكمية يجب أن تكون أكبر من صفر"),
   purchasedAt: z.string().min(1, "التاريخ مطلوب"),
   unitPrice: z.coerce.number().min(0).optional(),
+  /** Bank commission on USD purchase (₪) — recorded as expense. */
+  bankFeeIls: z.coerce.number().min(0).optional(),
   notes: z.string().max(300).optional().or(z.literal("")),
 });
 

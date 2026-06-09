@@ -144,6 +144,7 @@ model Transaction {
   installment           ProjectInstallment?
   savingsEntry          SavingsEntry?
   savingsAssetEntry     SavingsAssetEntry?
+  savingsAssetEntryFee  SavingsAssetEntry? @relation("SavingsAssetEntryFee")
   subscriptionPayment   SubscriptionPayment?
 
   @@index([userId, occurredAt])
@@ -347,18 +348,21 @@ model SavingsAsset {
 }
 
 model SavingsAssetEntry {
-  id            String   @id @default(cuid())
-  assetId       String
-  quantity      Decimal  @db.Decimal(14, 4)
-  unitPrice     Decimal  @db.Decimal(14, 4)
-  valueIls      Decimal  @db.Decimal(14, 2)
-  purchasedAt   DateTime @db.Date
-  notes         String?
-  transactionId String?  @unique
-  createdAt     DateTime @default(now())
+  id               String   @id @default(cuid())
+  assetId          String
+  quantity         Decimal  @db.Decimal(14, 4)
+  unitPrice        Decimal  @db.Decimal(14, 4)
+  valueIls         Decimal  @db.Decimal(14, 2)
+  purchasedAt      DateTime @db.Date
+  notes            String?
+  bankFeeIls       Decimal? @db.Decimal(14, 2)
+  transactionId    String?  @unique
+  feeTransactionId String?  @unique
+  createdAt        DateTime @default(now())
 
-  asset       SavingsAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
-  transaction Transaction? @relation(fields: [transactionId], references: [id], onDelete: SetNull)
+  asset          SavingsAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  transaction    Transaction? @relation(fields: [transactionId], references: [id], onDelete: SetNull)
+  feeTransaction Transaction? @relation("SavingsAssetEntryFee", fields: [feeTransactionId], references: [id], onDelete: SetNull)
 
   @@index([assetId, purchasedAt])
 }

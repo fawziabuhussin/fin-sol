@@ -93,7 +93,10 @@ export default async function TransactionsPage({
           paymentMethodName: item.paymentMethod?.name ?? "—",
           salarySlipId: item.salarySlipId,
           employerId: item.salarySlip?.employerId ?? null,
-          assetEntryId: item.savingsAssetEntry?.id ?? null,
+          assetEntryId:
+            item.savingsAssetEntry?.id ??
+            item.savingsAssetEntryFee?.id ??
+            null,
           assetMovement,
         };
       })}
