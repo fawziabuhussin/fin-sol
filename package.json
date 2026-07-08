@@ -17,6 +17,8 @@
     "import:isracard-march-gold": "tsx scripts/import-isracard-march-2026-gold.ts",
     "import:isracard-feb": "tsx scripts/import-isracard-feb-2026.ts",
     "import:isracard-jan": "tsx scripts/import-isracard-jan-2026.ts",
+    "reconcile:isracard-may-jul": "tsx scripts/reconcile-isracard-may-jul-2026.ts",
+    "recategorize:smart": "tsx scripts/smart-recategorize-expenses.ts",
     "seed:categories": "tsx scripts/seed-expense-categories.ts",
     "recategorize:isracard": "tsx scripts/recategorize-isracard.ts",
     "generate:favicons": "tsx scripts/generate-favicons.ts",

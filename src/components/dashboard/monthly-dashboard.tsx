@@ -5,6 +5,10 @@ import { useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { YearlyTrendChart } from "@/components/dashboard/yearly-trend-chart";
+import { CategoryBubbleChart } from "@/components/dashboard/category-bubble-chart";
+import { CategoryExpenseTable } from "@/components/dashboard/category-expense-table";
+import { CategorizeExpensesPanel } from "@/components/dashboard/categorize-expenses-panel";
+import type { ExpenseGroupRow, UncategorizedExpense } from "@/lib/expense-category-groups";
 import {
   ArrowDownLeft,
   ArrowUpRight,
@@ -48,6 +52,8 @@ type Overview = {
     build: number;
     total: number;
     byCategory: { name: string; amount: number }[];
+    byGroup: ExpenseGroupRow[];
+    uncategorized: UncategorizedExpense[];
   };
   savings: {
     contributions: number;
@@ -133,6 +139,7 @@ export function MonthlyDashboard({
   expenseMonths = [],
   buildingProjectId = null,
   totalSavingsExclKupot = 0,
+  expenseCategories = [],
   year,
   month,
 }: {
@@ -142,6 +149,7 @@ export function MonthlyDashboard({
   expenseMonths?: number[];
   buildingProjectId?: string | null;
   totalSavingsExclKupot?: number;
+  expenseCategories?: { id: string; name: string }[];
   year: number;
   month: number;
 }) {
@@ -378,64 +386,73 @@ export function MonthlyDashboard({
           </CardContent>
         </Card>
 
-        <Card className="overflow-hidden border-rose-100">
+        <Card className="overflow-hidden border-rose-100 lg:col-span-2">
           <CardHeader className="border-b border-rose-100 bg-gradient-to-l from-rose-50 to-white">
             <CardTitle className="flex items-center gap-2 text-rose-800">
               <ArrowUpRight className="h-5 w-5" />
-              المصروفات — Outcome
+              المصروفات حسب الفئة
             </CardTitle>
+            <p className="text-xs text-slate-500 sm:text-sm">
+              تصنيف ذكي مثل كشف البطاقة — دوائر حسب الحجم وجدول تفصيلي
+            </p>
           </CardHeader>
-          <CardContent className="space-y-3 p-4 sm:p-6">
-            <div className="flex flex-col gap-2 rounded-2xl border border-rose-100 bg-rose-50/50 p-3 sm:flex-row sm:items-center sm:justify-between sm:p-4">
-              <div className="flex items-center gap-3">
-                <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-white shadow-sm">
-                  <ShoppingBag className="h-5 w-5 text-rose-600" />
-                </span>
-                <div>
-                  <p className="font-bold text-slate-900">المصروفات اليومية</p>
-                  <p className="text-xs text-slate-500">بدون بناء</p>
+          <CardContent className="space-y-4 p-4 sm:p-6">
+            <CategorizeExpensesPanel
+              items={overview.expenses.uncategorized}
+              categories={expenseCategories}
+            />
+
+            <div className="grid gap-4 lg:grid-cols-2">
+              <CategoryBubbleChart
+                groups={overview.expenses.byGroup}
+                total={overview.expenses.daily}
+              />
+              <div className="space-y-3">
+                <div className="flex flex-col gap-2 rounded-2xl border border-rose-100 bg-rose-50/50 p-3 sm:flex-row sm:items-center sm:justify-between sm:p-4">
+                  <div className="flex items-center gap-3">
+                    <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-white shadow-sm">
+                      <ShoppingBag className="h-5 w-5 text-rose-600" />
+                    </span>
+                    <div>
+                      <p className="font-bold text-slate-900">المصروفات اليومية</p>
+                      <p className="text-xs text-slate-500">بدون بناء</p>
+                    </div>
+                  </div>
+                  <p className="text-base font-extrabold text-rose-700 sm:text-lg">
+                    {formatCurrency(overview.expenses.daily)}
+                  </p>
+                </div>
+                <div className="flex flex-col gap-2 rounded-2xl border border-amber-100 bg-amber-50/50 p-3 sm:flex-row sm:items-center sm:justify-between sm:p-4">
+                  <div className="flex items-center gap-3">
+                    <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-white shadow-sm">
+                      <Building2 className="h-5 w-5 text-amber-700" />
+                    </span>
+                    <div>
+                      {buildingProjectId ? (
+                        <Link
+                          href={`/projects/${buildingProjectId}`}
+                          className="font-bold text-slate-900 hover:underline"
+                        >
+                          مصروفات البناء
+                        </Link>
+                      ) : (
+                        <p className="font-bold text-slate-900">مصروفات البناء</p>
+                      )}
+                      <p className="text-xs text-slate-500">مقاولين وأقساط</p>
+                    </div>
+                  </div>
+                  <p className="text-base font-extrabold text-amber-700 sm:text-lg">
+                    {formatCurrency(overview.expenses.build)}
+                  </p>
                 </div>
               </div>
-              <p className="text-base font-extrabold text-rose-700 sm:text-lg">
-                {formatCurrency(overview.expenses.daily)}
-              </p>
             </div>
-            <div className="flex flex-col gap-2 rounded-2xl border border-amber-100 bg-amber-50/50 p-3 sm:flex-row sm:items-center sm:justify-between sm:p-4">
-              <div className="flex items-center gap-3">
-                <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-white shadow-sm">
-                  <Building2 className="h-5 w-5 text-amber-700" />
-                </span>
-                <div>
-                  {buildingProjectId ? (
-                    <Link
-                      href={`/projects/${buildingProjectId}`}
-                      className="font-bold text-slate-900 hover:underline"
-                    >
-                      مصروفات البناء
-                    </Link>
-                  ) : (
-                    <p className="font-bold text-slate-900">مصروفات البناء</p>
-                  )}
-                  <p className="text-xs text-slate-500">مقاولين وأقساط — اضغط للتفاصيل</p>
-                </div>
-              </div>
-              <p className="text-base font-extrabold text-amber-700 sm:text-lg">
-                {formatCurrency(overview.expenses.build)}
-              </p>
-            </div>
-            {overview.expenses.byCategory.slice(0, 5).map((cat) => (
-              <div
-                key={cat.name}
-                className="flex items-center justify-between rounded-xl border border-slate-100 px-3 py-2"
-              >
-                <span className="text-sm font-medium text-slate-700">
-                  {cat.name}
-                </span>
-                <span className="text-sm font-bold text-slate-900">
-                  {formatCurrency(cat.amount)}
-                </span>
-              </div>
-            ))}
+
+            <CategoryExpenseTable
+              groups={overview.expenses.byGroup}
+              total={overview.expenses.daily}
+            />
+
             <div className="flex items-center justify-between rounded-2xl bg-rose-600 px-4 py-3 text-white">
               <span className="font-bold">إجمالي المصروفات</span>
               <span className="text-xl font-extrabold">
@@ -445,6 +462,25 @@ export function MonthlyDashboard({
           </CardContent>
         </Card>
       </div>
+
+      <Card className="overflow-hidden border-rose-50 lg:hidden">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">أعلى الفئات التفصيلية</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {overview.expenses.byCategory.slice(0, 6).map((cat) => (
+            <div
+              key={cat.name}
+              className="flex items-center justify-between rounded-xl border border-slate-100 px-3 py-2"
+            >
+              <span className="text-sm font-medium text-slate-700">{cat.name}</span>
+              <span className="text-sm font-bold text-slate-900">
+                {formatCurrency(cat.amount)}
+              </span>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
 
       <Card className="overflow-hidden border-violet-100">
         <CardHeader className="border-b border-violet-100 bg-gradient-to-l from-violet-50 to-white">

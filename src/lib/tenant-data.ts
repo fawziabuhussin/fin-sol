@@ -25,6 +25,10 @@ import {
 } from "@/lib/installment-transactions";
 import { contractorBudgetTotal } from "@/lib/project-completion-utils";
 import {
+  aggregateExpensesByGroup,
+  findUncategorizedExpenses,
+} from "@/lib/expense-category-groups";
+import {
   CategoryKind,
   InstallmentStatus,
   ProjectKind,
@@ -234,7 +238,7 @@ export async function getMonthlyOverview(
     await Promise.all([
       prisma.transaction.findMany({
         where: { userId, occurredAt: { gte: start, lte: end } },
-        include: { category: true, payee: true, project: true },
+        include: { category: true, payee: true, project: true, paymentMethod: true },
         orderBy: { occurredAt: "desc" },
       }),
       prisma.salarySlip.findMany({
@@ -289,6 +293,24 @@ export async function getMonthlyOverview(
   const expenseByCategory = [...categoryMap.entries()]
     .map(([name, amount]) => ({ name, amount }))
     .sort((a, b) => b.amount - a.amount);
+
+  const expenseTxItems = transactions
+    .filter((t) => t.type === TransactionType.EXPENSE)
+    .map((t) => ({
+      id: t.id,
+      amount: decimalToNumber(t.amount),
+      occurredAt: t.occurredAt.toISOString().slice(0, 10),
+      description: t.description,
+      categoryId: t.categoryId,
+      categoryName: t.category?.name ?? "أخرى",
+      paymentMethodName: t.paymentMethod?.name ?? null,
+    }));
+
+  const expenseByGroup = aggregateExpensesByGroup(
+    expenseTxItems.map((t) => ({ ...t, excludeBuild: true })),
+    dailyExpenses
+  );
+  const uncategorizedExpenses = findUncategorizedExpenses(expenseTxItems);
 
   const totalExpenses = dailyExpenses + buildExpenses;
 
@@ -355,6 +377,8 @@ export async function getMonthlyOverview(
       effective: expenseAdjust.expenses,
       adjusted: expenseAdjust.adjusted,
       byCategory: expenseByCategory,
+      byGroup: expenseByGroup,
+      uncategorized: uncategorizedExpenses,
     },
     savings: {
       contributions: savingsPaidThisMonth,
@@ -754,7 +778,7 @@ export async function getDashboardData(
   month?: number
 ) {
   const resolvedMonth = await resolveDashboardMonth(userId, year, month);
-  const [overview, trend, availableMonths, expenseMonths, masterBuild, savingsSummary] =
+  const [overview, trend, availableMonths, expenseMonths, masterBuild, savingsSummary, expenseCategories] =
     await Promise.all([
     getMonthlyOverview(userId, year, resolvedMonth),
     getYearlyTrend(userId, year),
@@ -768,6 +792,11 @@ export async function getDashboardData(
       throughYear: year,
       throughMonth: resolvedMonth,
     }),
+    prisma.category.findMany({
+      where: { userId, kind: CategoryKind.EXPENSE, isActive: true },
+      orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+      select: { id: true, name: true },
+    }),
   ]);
 
   return {
@@ -777,6 +806,7 @@ export async function getDashboardData(
     expenseMonths,
     buildingProjectId: masterBuild?.id ?? null,
     totalSavingsExclKupot: savingsSummary.summary.accumulatedTotal,
+    expenseCategories,
     year,
     month: resolvedMonth,
   };

@@ -3,7 +3,11 @@ import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/session";
 import { handleApiError } from "@/lib/api-error";
 import { syncLinkedInstallmentTransaction } from "@/lib/installment-transactions";
-import { transactionSchema } from "@/lib/validations/transactions";
+import {
+  transactionCategorizeSchema,
+  transactionPatchSchema,
+  transactionSchema,
+} from "@/lib/validations/transactions";
 import { InstallmentStatus } from "@/generated/prisma/client";
 
 export async function PATCH(
@@ -42,7 +46,30 @@ export async function PATCH(
     }
 
     const body = await req.json();
-    const parsed = transactionSchema.safeParse(body);
+
+    const categorizeOnly =
+      body &&
+      typeof body === "object" &&
+      "categoryId" in body &&
+      Object.keys(body).length === 1;
+
+    if (categorizeOnly) {
+      const catParsed = transactionCategorizeSchema.safeParse(body);
+      if (!catParsed.success) {
+        return NextResponse.json({ error: catParsed.error.flatten() }, { status: 400 });
+      }
+      const updated = await prisma.transaction.update({
+        where: { id },
+        data: { categoryId: catParsed.data.categoryId },
+      });
+      return NextResponse.json(updated);
+    }
+
+    const hasAllRequired =
+      body?.type != null && body?.amount != null && body?.occurredAt != null;
+    const parsed = hasAllRequired
+      ? transactionSchema.safeParse(body)
+      : transactionPatchSchema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
     }
@@ -57,20 +84,26 @@ export async function PATCH(
     const updated = await prisma.transaction.update({
       where: { id },
       data: {
-        type: data.type,
-        amount: data.amount,
-        occurredAt: new Date(data.occurredAt),
-        description: data.description || null,
-        notes: data.notes || null,
-        projectId: data.projectId || null,
-        categoryId: data.categoryId || null,
-        payeeId: data.payeeId || null,
-        paymentMethodId: data.paymentMethodId || null,
-        currency: data.currency || "ILS",
+        ...(data.type != null && { type: data.type }),
+        ...(data.amount != null && { amount: data.amount }),
+        ...(data.occurredAt != null && { occurredAt: new Date(data.occurredAt) }),
+        ...(data.description !== undefined && { description: data.description || null }),
+        ...(data.notes !== undefined && { notes: data.notes || null }),
+        ...(data.projectId !== undefined && { projectId: data.projectId || null }),
+        ...(data.categoryId !== undefined && { categoryId: data.categoryId || null }),
+        ...(data.payeeId !== undefined && { payeeId: data.payeeId || null }),
+        ...(data.paymentMethodId !== undefined && {
+          paymentMethodId: data.paymentMethodId || null,
+        }),
+        ...(data.currency != null && { currency: data.currency || "ILS" }),
       },
     });
 
-    if (linkedInstallment) {
+    if (
+      linkedInstallment &&
+      data.amount != null &&
+      data.occurredAt != null
+    ) {
       await prisma.projectInstallment.update({
         where: { id: linkedInstallment.id },
         data: {

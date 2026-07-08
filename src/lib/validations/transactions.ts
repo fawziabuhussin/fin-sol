@@ -14,3 +14,13 @@ export const transactionSchema = z.object({
 });
 
 export type TransactionInput = z.infer<typeof transactionSchema>;
+
+/** Partial update — used for quick category assignment from dashboard */
+export const transactionPatchSchema = transactionSchema.partial().refine(
+  (data) => Object.keys(data).length > 0,
+  { message: "لا توجد حقول للتحديث" }
+);
+
+export const transactionCategorizeSchema = z.object({
+  categoryId: z.string().min(1, "الفئة مطلوبة"),
+});

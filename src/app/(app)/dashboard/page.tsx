@@ -24,6 +24,7 @@ export default async function DashboardPage({
       expenseMonths={data.expenseMonths}
       buildingProjectId={data.buildingProjectId}
       totalSavingsExclKupot={data.totalSavingsExclKupot}
+      expenseCategories={data.expenseCategories}
       year={data.year}
       month={data.month}
     />
