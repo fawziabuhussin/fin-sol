@@ -22,7 +22,8 @@ const NET_BY_MONTH: Record<number, number> = {
   3: 2584.47,
   4: 1819.12,
   5: 1819.12,
-  6: 1819.12,
+  6: 2039.25,
+  7: 2039.25,
 };
 
 /** Jan–Mar 2026 — תלוש גבוה (אלטשולר + הפניקס השתלמות) */
@@ -110,6 +111,49 @@ const LOW_KUPOT_BREAKDOWN: SalarySlipBreakdown = {
   otherDeductions: 15.2,
 };
 
+/** Jun 2026+ — תלוש עם ת. דיפרנציאלית (6-2026.pdf) */
+const JUN_2026_BREAKDOWN: SalarySlipBreakdown = {
+  taxes: {
+    nationalInsurance: 185,
+    healthInsurance: 136,
+    incomeTax: 53,
+    total: 374,
+  },
+  pension: {
+    employee: 164.73,
+    employer: 153.75,
+    severanceEmployer: 182.96,
+    lines: [
+      {
+        fund: "347",
+        type: "קצבה שכיר-תג.",
+        employee: 164.73,
+        employer: 153.75,
+        base: 2196.4,
+      },
+      {
+        fund: "347",
+        type: "פיצויים",
+        employee: 0,
+        employer: 182.96,
+        base: 2196.4,
+      },
+      {
+        fund: "458",
+        type: "קרן השתלמות",
+        employee: 54.27,
+        employer: 162.81,
+        base: 2170.84,
+      },
+    ],
+  },
+  keren: {
+    employee: 54.27,
+    employer: 162.81,
+  },
+  otherDeductions: 17.57,
+};
+
 export type JamaShoglSlipPayload = {
   gross: number;
   net: number;
@@ -152,6 +196,20 @@ function buildHighSlip(month: number): JamaShoglSlipPayload {
 }
 
 function buildLowSlip(month: number): JamaShoglSlipPayload {
+  if (month >= 6) {
+    const net = NET_BY_MONTH[month] ?? 2039.25;
+    return {
+      gross: 2638.84,
+      net,
+      tax: 374,
+      pension: 164.73,
+      kerenHishtalmut: 54.27,
+      fees: 17.57,
+      bonus: 0,
+      slipBreakdown: JUN_2026_BREAKDOWN,
+      notes: `תלוש בן גוריון — חודש ${month}/2026 (ת. דיפרנציאלית)`,
+    };
+  }
   return {
     gross: 2346.3,
     net: NET_BY_MONTH[month] ?? 1819.12,

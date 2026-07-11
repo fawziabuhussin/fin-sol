@@ -4,6 +4,7 @@ import { Fragment } from "react";
 import { motion } from "framer-motion";
 import { Building2, Landmark, Users, Wallet } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { kupotDetailLines } from "@/lib/kupot-totals";
 import { formatCurrency } from "@/lib/utils";
 import { SavingsTabs } from "@/components/savings/savings-tabs";
 
@@ -221,7 +222,9 @@ export function KupotPageClient({ data }: { data: KupotPageData }) {
                         </thead>
                         <tbody>
                           {emp.monthlyHistory.map((row) => {
-                            const lines = row.breakdown?.pension?.lines ?? [];
+                            const lines = kupotDetailLines(
+                              row.breakdown as Parameters<typeof kupotDetailLines>[0]
+                            );
                             return (
                               <Fragment key={`${row.year}-${row.month}`}>
                                 <tr className="border-b border-slate-50">

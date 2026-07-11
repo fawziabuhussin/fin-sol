@@ -27,15 +27,20 @@ import {
   ChevronRight,
   Lightbulb,
   PiggyBank,
+  ShoppingBag,
   Sparkles,
   TrendingDown,
   TrendingUp,
   Wallet,
+  Zap,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
+import { CategoryBubbleChart } from "@/components/dashboard/category-bubble-chart";
+import { CategoryExpenseTable } from "@/components/dashboard/category-expense-table";
+import type { ExpenseGroupRow } from "@/lib/expense-category-groups";
 import { formatCurrency } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 
@@ -103,6 +108,32 @@ export type AnnualShowcaseData = {
     amount: number;
   }[];
   expensesByCategory: { name: string; amount: number }[];
+  expensesByGroup: ExpenseGroupRow[];
+  bigOutcomes: {
+    id: string;
+    amount: number;
+    occurredAt: string;
+    description: string | null;
+    categoryName: string;
+    month: number;
+    monthLabel: string;
+    groupId: string;
+    groupLabel: string;
+    isBig: boolean;
+  }[];
+  moneyFlow: {
+    income: number;
+    daily: number;
+    build: number;
+    savings: number;
+    net: number;
+    dailyPct: number;
+    buildPct: number;
+    savingsPct: number;
+    netPct: number;
+    outflowTotal: number;
+    outflowPct: number;
+  };
   averages: { income: number; expenses: number };
   highlights: {
     bestNetMonth: { label: string; net: number; month: number } | null;
@@ -275,6 +306,253 @@ export function AnnualShowcaseClient({ data }: { data: AnnualShowcaseData }) {
           ))}
         </div>
       </motion.section>
+
+      {/* Year money flow overview */}
+      <Card className="border-indigo-100 shadow-md">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-lg">
+            <Wallet className="h-5 w-5 text-indigo-700" />
+            توزيع السنة — من الدخل إلى المخرجات
+          </CardTitle>
+          <p className="text-sm text-slate-500">
+            ملخّص شامل لكل أين ذهب المال خلال {year} حتى{" "}
+            {data.monthly[data.monthly.length - 1]?.label ?? "—"}
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+            {[
+              {
+                label: "إجمالي الدخل",
+                value: data.moneyFlow.income,
+                pct: 100,
+                color: "text-emerald-700",
+                bg: "bg-emerald-50",
+                bar: "bg-emerald-500",
+              },
+              {
+                label: "مصروفات يومية",
+                value: data.moneyFlow.daily,
+                pct: data.moneyFlow.dailyPct,
+                color: "text-rose-700",
+                bg: "bg-rose-50",
+                bar: "bg-rose-500",
+              },
+              {
+                label: "بناء",
+                value: data.moneyFlow.build,
+                pct: data.moneyFlow.buildPct,
+                color: "text-amber-700",
+                bg: "bg-amber-50",
+                bar: "bg-amber-500",
+              },
+              {
+                label: "ادخار",
+                value: data.moneyFlow.savings,
+                pct: data.moneyFlow.savingsPct,
+                color: "text-violet-700",
+                bg: "bg-violet-50",
+                bar: "bg-violet-500",
+              },
+              {
+                label: "الصافي",
+                value: data.moneyFlow.net,
+                pct: data.moneyFlow.netPct,
+                color: data.moneyFlow.net >= 0 ? "text-emerald-700" : "text-rose-700",
+                bg: data.moneyFlow.net >= 0 ? "bg-emerald-50" : "bg-rose-50",
+                bar: data.moneyFlow.net >= 0 ? "bg-emerald-600" : "bg-rose-500",
+              },
+            ].map((item) => (
+              <div key={item.label} className={cn("rounded-2xl p-3", item.bg)}>
+                <p className="text-xs text-slate-500">{item.label}</p>
+                <p className={cn("text-lg font-extrabold", item.color)}>
+                  {formatCurrency(item.value)}
+                </p>
+                <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/80">
+                  <div
+                    className={cn("h-full rounded-full transition-all", item.bar)}
+                    style={{ width: `${Math.min(100, Math.abs(item.pct))}%` }}
+                  />
+                </div>
+                <p className="mt-1 text-[10px] text-slate-500">
+                  {item.label === "إجمالي الدخل"
+                    ? "100% من الدخل"
+                    : `${item.pct.toFixed(1)}% من الدخل`}
+                </p>
+              </div>
+            ))}
+          </div>
+
+          <div className="rounded-2xl border border-slate-100 bg-slate-50/60 p-4">
+            <div className="mb-2 flex items-center justify-between text-sm">
+              <span className="font-semibold text-slate-700">إجمالي المخرجات</span>
+              <span className="font-bold text-slate-900">
+                {formatCurrency(data.moneyFlow.outflowTotal)}{" "}
+                <span className="text-xs font-normal text-slate-500">
+                  ({data.moneyFlow.outflowPct.toFixed(1)}% من الدخل)
+                </span>
+              </span>
+            </div>
+            <div className="flex h-4 overflow-hidden rounded-full bg-white shadow-inner">
+              {data.moneyFlow.daily > 0 && (
+                <div
+                  className="bg-rose-500"
+                  style={{
+                    width: `${(data.moneyFlow.daily / data.moneyFlow.outflowTotal) * 100}%`,
+                  }}
+                  title={`يومي ${formatCurrency(data.moneyFlow.daily)}`}
+                />
+              )}
+              {data.moneyFlow.build > 0 && (
+                <div
+                  className="bg-amber-500"
+                  style={{
+                    width: `${(data.moneyFlow.build / data.moneyFlow.outflowTotal) * 100}%`,
+                  }}
+                  title={`بناء ${formatCurrency(data.moneyFlow.build)}`}
+                />
+              )}
+              {data.moneyFlow.savings > 0 && (
+                <div
+                  className="bg-violet-500"
+                  style={{
+                    width: `${(data.moneyFlow.savings / data.moneyFlow.outflowTotal) * 100}%`,
+                  }}
+                  title={`ادخار ${formatCurrency(data.moneyFlow.savings)}`}
+                />
+              )}
+            </div>
+            <div className="mt-2 flex flex-wrap gap-3 text-xs text-slate-600">
+              <span className="flex items-center gap-1.5">
+                <span className="h-2.5 w-2.5 rounded-full bg-rose-500" />
+                يومي {formatCurrency(data.moneyFlow.daily)}
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="h-2.5 w-2.5 rounded-full bg-amber-500" />
+                بناء {formatCurrency(data.moneyFlow.build)}
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="h-2.5 w-2.5 rounded-full bg-violet-500" />
+                ادخار {formatCurrency(data.moneyFlow.savings)}
+              </span>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Annual outcomes by category group */}
+      <Card className="border-rose-100 shadow-md">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-lg">
+            <ShoppingBag className="h-5 w-5 text-rose-700" />
+            ملخّص المخرجات السنوية — حسب الفئة
+          </CardTitle>
+          <p className="text-sm text-slate-500">
+            كل المصروفات اليومية مصنّفة — {formatCurrency(totals.daily)} بدون بناء
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-4 lg:grid-cols-2">
+            <CategoryBubbleChart
+              groups={data.expensesByGroup}
+              total={totals.daily}
+            />
+            <div className="space-y-2">
+              {data.expensesByGroup.slice(0, 8).map((group) => (
+                <div key={group.id}>
+                  <div className="mb-1 flex justify-between text-sm">
+                    <span className="font-medium text-slate-700">{group.label}</span>
+                    <span className="font-bold">
+                      {formatCurrency(group.amount)}
+                      <span className="mr-1 text-xs font-normal text-slate-500">
+                        ({group.percent.toFixed(1)}%)
+                      </span>
+                    </span>
+                  </div>
+                  <Progress value={group.percent} className="h-1.5" />
+                </div>
+              ))}
+            </div>
+          </div>
+          <CategoryExpenseTable groups={data.expensesByGroup} total={totals.daily} />
+        </CardContent>
+      </Card>
+
+      {/* Big outcomes */}
+      {data.bigOutcomes.length > 0 && (
+        <Card className="border-amber-200 shadow-md">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <Zap className="h-5 w-5 text-amber-600" />
+              المخرجات الكبيرة
+            </CardTitle>
+            <p className="text-sm text-slate-500">
+              أعلى المعاملات خلال السنة — المُعلَّمة بـ «كبير» تجاوزت الحد أو ضمن الأكبر
+            </p>
+          </CardHeader>
+          <CardContent className="overflow-x-auto">
+            <table className="w-full min-w-[520px] text-sm">
+              <thead>
+                <tr className="border-b border-slate-100 text-right text-xs text-slate-500">
+                  <th className="pb-3 pr-2 font-medium">التاريخ</th>
+                  <th className="pb-3 font-medium">الوصف</th>
+                  <th className="pb-3 font-medium">الفئة</th>
+                  <th className="pb-3 font-medium">الشهر</th>
+                  <th className="pb-3 pl-2 font-medium">المبلغ</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.bigOutcomes.map((tx) => (
+                  <tr
+                    key={tx.id}
+                    className={cn(
+                      "border-b border-slate-50 transition-colors",
+                      tx.isBig && "bg-amber-50/50"
+                    )}
+                  >
+                    <td className="py-3 pr-2 text-slate-600">{tx.occurredAt}</td>
+                    <td className="max-w-[200px] truncate py-3 font-medium text-slate-800">
+                      {tx.description || tx.categoryName || "—"}
+                      {tx.isBig && (
+                        <Badge
+                          variant="warning"
+                          className="mr-2 border border-amber-300 bg-amber-100 text-[10px] text-amber-800"
+                        >
+                          كبير
+                        </Badge>
+                      )}
+                    </td>
+                    <td className="py-3 text-slate-600">{tx.groupLabel}</td>
+                    <td className="py-3">
+                      <Link
+                        href={`/dashboard?year=${year}&month=${tx.month}`}
+                        className="text-indigo-600 hover:underline"
+                      >
+                        {tx.monthLabel}
+                      </Link>
+                    </td>
+                    <td className="py-3 pl-2 font-extrabold text-rose-700">
+                      {formatCurrency(tx.amount)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="bg-slate-900 text-white">
+                  <td colSpan={4} className="rounded-br-xl py-3 pr-2 font-bold">
+                    إجمالي المعاملات المعروضة
+                  </td>
+                  <td className="rounded-bl-xl py-3 pl-2 font-bold">
+                    {formatCurrency(
+                      data.bigOutcomes.reduce((s, t) => s + t.amount, 0)
+                    )}
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Year-end forecast */}
       <Card className="border-emerald-100 shadow-md">

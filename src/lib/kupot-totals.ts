@@ -1,6 +1,32 @@
 import type { SalarySlipBreakdown } from "@/lib/payslip-types";
 import { decimalToNumber } from "@/lib/utils";
 
+export type KupotDetailLine = NonNullable<
+  SalarySlipBreakdown["pension"]["lines"]
+>[number];
+
+/** Pension + keren lines for monthly קופות detail tables. */
+export function kupotDetailLines(
+  breakdown: SalarySlipBreakdown | null | undefined
+): KupotDetailLine[] {
+  if (!breakdown) return [];
+
+  const lines = [...(breakdown.pension.lines ?? [])];
+  const hasKerenLine = lines.some((line) =>
+    /השתלמות|hishtalmut/i.test(line.type ?? "")
+  );
+  const { keren } = breakdown;
+  if (!hasKerenLine && (keren.employee > 0 || keren.employer > 0)) {
+    lines.push({
+      fund: "458",
+      type: "קרן השתלמות",
+      employee: keren.employee,
+      employer: keren.employer,
+    });
+  }
+  return lines;
+}
+
 export type KupotAmounts = {
   pensionEmployee: number;
   kerenEmployee: number;

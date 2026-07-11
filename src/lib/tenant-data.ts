@@ -27,6 +27,10 @@ import { contractorBudgetTotal } from "@/lib/project-completion-utils";
 import {
   aggregateExpensesByGroup,
   findUncategorizedExpenses,
+  getExpenseGroup,
+  groupIdFromCategoryName,
+  type ExpenseGroupId,
+  type ExpenseGroupRow,
 } from "@/lib/expense-category-groups";
 import {
   CategoryKind,
@@ -464,6 +468,8 @@ function buildAnnualInsights(params: {
   worstNetMonth: { label: string; net: number } | null;
   highestExpenseMonth: { label: string; expenses: number } | null;
   topExpenseCategory: { name: string; amount: number } | null;
+  topExpenseGroup: { label: string; amount: number } | null;
+  bigOutcomesCount: number;
   topIncomeSource: { name: string; amount: number } | null;
   building: {
     master: { percentComplete: number; remaining: number; paidToDate: number };
@@ -533,6 +539,20 @@ function buildAnnualInsights(params: {
     });
   }
 
+  if (params.topExpenseGroup) {
+    insights.push({
+      type: "neutral",
+      text: `أكبر مجموعة مخرجات: ${params.topExpenseGroup.label} — ${formatInsightAmount(params.topExpenseGroup.amount)} من المصروفات اليومية.`,
+    });
+  }
+
+  if (params.bigOutcomesCount > 0) {
+    insights.push({
+      type: "warning",
+      text: `${params.bigOutcomesCount} معاملة كبيرة خلال السنة — راجع قسم «المخرجات الكبيرة» للتفاصيل.`,
+    });
+  }
+
   if (params.totals.build > 0) {
     insights.push({
       type: "neutral",
@@ -563,6 +583,106 @@ function formatInsightAmount(n: number) {
     currency: "ILS",
     maximumFractionDigits: 0,
   }).format(n);
+}
+
+const BIG_OUTCOME_MIN_ILS = 800;
+
+type MonthlyOverviewRow = Awaited<ReturnType<typeof getMonthlyOverview>>;
+
+function aggregateAnnualExpenseGroups(
+  months: MonthlyOverviewRow[],
+  throughMonth: number,
+  dailyTotal: number
+): ExpenseGroupRow[] {
+  const buckets = new Map<ExpenseGroupId, ExpenseGroupRow>();
+
+  for (const m of months) {
+    if (m.month > throughMonth) continue;
+    for (const group of m.expenses.byGroup) {
+      let row = buckets.get(group.id);
+      if (!row) {
+        row = {
+          id: group.id,
+          label: group.label,
+          color: group.color,
+          amount: 0,
+          percent: 0,
+          transactions: [],
+        };
+        buckets.set(group.id, row);
+      }
+      row.amount += group.amount;
+      row.transactions.push(...group.transactions);
+    }
+  }
+
+  return [...buckets.values()]
+    .map((row) => ({
+      ...row,
+      percent: dailyTotal > 0 ? (row.amount / dailyTotal) * 100 : 0,
+      transactions: row.transactions.sort(
+        (a, b) =>
+          b.amount - a.amount || b.occurredAt.localeCompare(a.occurredAt)
+      ),
+    }))
+    .sort(
+      (a, b) =>
+        b.amount - a.amount ||
+        getExpenseGroup(a.id).sortOrder - getExpenseGroup(b.id).sortOrder
+    );
+}
+
+function collectBigOutcomes(
+  months: MonthlyOverviewRow[],
+  throughMonth: number,
+  dailyTotal: number
+) {
+  const expenses: {
+    id: string;
+    amount: number;
+    occurredAt: string;
+    description: string | null;
+    categoryName: string;
+    month: number;
+    monthLabel: string;
+    groupId: ExpenseGroupId;
+    groupLabel: string;
+  }[] = [];
+
+  for (const m of months) {
+    if (m.month > throughMonth) continue;
+    for (const t of m.transactions) {
+      if (t.type !== TransactionType.EXPENSE) continue;
+      if (t.categoryName === BUILD_CATEGORY) continue;
+      const groupId = groupIdFromCategoryName(t.categoryName);
+      expenses.push({
+        id: t.id,
+        amount: t.amount,
+        occurredAt: t.occurredAt,
+        description: t.description,
+        categoryName: t.categoryName,
+        month: m.month,
+        monthLabel: m.monthLabel,
+        groupId,
+        groupLabel: getExpenseGroup(groupId).label,
+      });
+    }
+  }
+
+  const sorted = expenses.sort(
+    (a, b) => b.amount - a.amount || b.occurredAt.localeCompare(a.occurredAt)
+  );
+  const dynamicThreshold = Math.max(
+    BIG_OUTCOME_MIN_ILS,
+    dailyTotal > 0 ? dailyTotal * 0.03 : BIG_OUTCOME_MIN_ILS
+  );
+
+  return sorted
+    .filter((t, i) => t.amount >= dynamicThreshold || i < 12)
+    .map((t) => ({
+      ...t,
+      isBig: t.amount >= dynamicThreshold,
+    }));
 }
 
 export async function getAnnualShowcaseData(userId: string, year: number) {
@@ -696,6 +816,27 @@ export async function getAnnualShowcaseData(userId: string, year: number) {
     monthsWithSlips: yearSalarySlips.length,
   };
 
+  const expensesByGroup = aggregateAnnualExpenseGroups(
+    months,
+    throughMonth,
+    totals.daily
+  );
+  const bigOutcomes = collectBigOutcomes(months, throughMonth, totals.daily);
+  const outflowTotal = totals.daily + totals.build + totals.savings;
+  const moneyFlow = {
+    income: totals.income,
+    daily: totals.daily,
+    build: totals.build,
+    savings: totals.savings,
+    net: totals.netAfterSavings,
+    dailyPct: totals.income > 0 ? (totals.daily / totals.income) * 100 : 0,
+    buildPct: totals.income > 0 ? (totals.build / totals.income) * 100 : 0,
+    savingsPct: totals.income > 0 ? (totals.savings / totals.income) * 100 : 0,
+    netPct: totals.income > 0 ? (totals.netAfterSavings / totals.income) * 100 : 0,
+    outflowTotal,
+    outflowPct: totals.income > 0 ? (outflowTotal / totals.income) * 100 : 0,
+  };
+
   const insights = buildAnnualInsights({
     year,
     totals,
@@ -706,6 +847,10 @@ export async function getAnnualShowcaseData(userId: string, year: number) {
     worstNetMonth,
     highestExpenseMonth,
     topExpenseCategory: expensesByCategory[0] ?? null,
+    topExpenseGroup: expensesByGroup[0]
+      ? { label: expensesByGroup[0].label, amount: expensesByGroup[0].amount }
+      : null,
+    bigOutcomesCount: bigOutcomes.filter((t) => t.isBig).length,
     topIncomeSource: incomeBySource[0] ?? null,
     building,
   });
@@ -718,6 +863,9 @@ export async function getAnnualShowcaseData(userId: string, year: number) {
     yearForecast,
     incomeBySource,
     expensesByCategory,
+    expensesByGroup,
+    bigOutcomes,
+    moneyFlow,
     averages: {
       income: avgMonthlyIncome,
       expenses: avgMonthlyExpenses,
