@@ -1,10 +1,11 @@
 "use client";
 
-import { useTransition } from "react";
+import { useEffect, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { transactionSchema, type TransactionInput } from "@/lib/validations/transactions";
+import { localTodayIso } from "@/lib/dates";
 import {
   Sheet,
   SheetContent,
@@ -19,6 +20,21 @@ import { Select } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 
 type LookupOption = { id: string; name: string };
+
+function toFormValues(initial?: Partial<TransactionInput>): TransactionInput {
+  return {
+    type: initial?.type ?? "EXPENSE",
+    amount: initial?.amount ?? 0,
+    occurredAt: (initial?.occurredAt ?? localTodayIso()).slice(0, 10),
+    description: initial?.description ?? "",
+    notes: initial?.notes ?? "",
+    projectId: initial?.projectId ?? "",
+    categoryId: initial?.categoryId ?? "",
+    payeeId: initial?.payeeId ?? "",
+    paymentMethodId: initial?.paymentMethodId ?? "",
+    currency: initial?.currency ?? "ILS",
+  };
+}
 
 export function TransactionSheet({
   open,
@@ -40,22 +56,20 @@ export function TransactionSheet({
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
+  const defaults = toFormValues(initial);
 
   const form = useForm<TransactionInput>({
     resolver: zodResolver(transactionSchema) as any,
-    defaultValues: {
-      type: initial?.type ?? "EXPENSE",
-      amount: initial?.amount ?? 0,
-      occurredAt: initial?.occurredAt ?? new Date().toISOString().slice(0, 10),
-      description: initial?.description ?? "",
-      notes: initial?.notes ?? "",
-      projectId: initial?.projectId ?? "",
-      categoryId: initial?.categoryId ?? "",
-      payeeId: initial?.payeeId ?? "",
-      paymentMethodId: initial?.paymentMethodId ?? "",
-      currency: "ILS",
-    },
+    defaultValues: defaults,
   });
+
+  useEffect(() => {
+    if (!open) return;
+    form.reset(toFormValues(initial));
+    // Reset only when the sheet opens or the edited row changes — not on every
+    // parent re-render, which would wipe fields the user is currently editing.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, transactionId]);
 
   const onSubmit = form.handleSubmit((values) => {
     startTransition(async () => {

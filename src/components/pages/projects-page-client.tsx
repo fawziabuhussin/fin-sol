@@ -144,8 +144,12 @@ export function ProjectsPageClient({
       </Card>
 
       <ProjectSheet
+        key={editing?.id ?? "new-project"}
         open={sheetOpen}
-        onOpenChange={setSheetOpen}
+        onOpenChange={(next) => {
+          setSheetOpen(next);
+          if (!next) setEditing(null);
+        }}
         projectId={editing?.id}
         initial={
           editing
