@@ -358,7 +358,8 @@ async function main() {
     for (const fix of dateFixes) {
       const hits = findByDescAmount(fix.description, fix.amount);
       const row = fix.fromDate
-        ? hits.find((t) => t.occurred.slice(0, 10) === fix.fromDate)
+        ? hits.find((t) => t.occurred.slice(0, 10) === fix.fromDate) ||
+          hits.find((t) => t.occurred.slice(0, 10) === fix.date)
         : hits[0];
       if (!row) {
         console.log(`! date-fix missing: ${fix.description} ${fix.amount}`);
