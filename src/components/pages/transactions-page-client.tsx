@@ -737,8 +737,12 @@ export function TransactionsPageClient({
       </Card>
 
       <TransactionSheet
+        key={editing?.id ?? `new-${defaultType}`}
         open={sheetOpen}
-        onOpenChange={setSheetOpen}
+        onOpenChange={(next) => {
+          setSheetOpen(next);
+          if (!next) setEditing(null);
+        }}
         transactionId={editing?.id}
         initial={
           editing

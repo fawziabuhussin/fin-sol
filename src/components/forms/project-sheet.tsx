@@ -1,6 +1,6 @@
 "use client";
 
-import { useTransition } from "react";
+import { useEffect, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -18,6 +18,16 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 
+function toFormValues(initial?: Partial<ProjectInput>): ProjectInput {
+  return {
+    title: initial?.title ?? "",
+    description: initial?.description ?? "",
+    totalBudget: initial?.totalBudget ?? undefined,
+    targetDate: initial?.targetDate ?? "",
+    status: initial?.status ?? "PLANNED",
+  };
+}
+
 export function ProjectSheet({
   open,
   onOpenChange,
@@ -34,14 +44,14 @@ export function ProjectSheet({
 
   const form = useForm<ProjectInput>({
     resolver: zodResolver(projectSchema) as any,
-    defaultValues: {
-      title: initial?.title ?? "",
-      description: initial?.description ?? "",
-      totalBudget: initial?.totalBudget ?? undefined,
-      targetDate: initial?.targetDate ?? "",
-      status: initial?.status ?? "PLANNED",
-    },
+    defaultValues: toFormValues(initial),
   });
+
+  useEffect(() => {
+    if (!open) return;
+    form.reset(toFormValues(initial));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, projectId]);
 
   const onSubmit = form.handleSubmit((values) => {
     startTransition(async () => {
