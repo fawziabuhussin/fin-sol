@@ -37,6 +37,30 @@ export function incomeDateFromSalaryPeriod(year: number, month: number) {
   return new Date(Date.UTC(year, month - 1, 1));
 }
 
+/**
+ * Bank-credit date for جامعة شغل: BGU pays the following month, so dashboard
+ * income follows paidAt when the slip is marked collected.
+ */
+export function incomeDateFromPaidAt(
+  paidAt: Date,
+  periodYear: number,
+  periodMonth: number
+) {
+  if (
+    Number.isNaN(paidAt.getTime()) ||
+    paidAt.getUTCFullYear() < 2020
+  ) {
+    return incomeDateFromSalaryPeriod(periodYear, periodMonth);
+  }
+  return new Date(
+    Date.UTC(
+      paidAt.getUTCFullYear(),
+      paidAt.getUTCMonth(),
+      paidAt.getUTCDate()
+    )
+  );
+}
+
 /** Local calendar date as YYYY-MM-DD (matches HTML date inputs). */
 export function localTodayIso(now = new Date()) {
   const y = now.getFullYear();

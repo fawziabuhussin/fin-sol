@@ -261,9 +261,9 @@ async function main() {
 
         const amount = effectiveNet(row);
         await client.query(
-          `UPDATE "Transaction" SET amount = $1, "updatedAt" = NOW()
-           WHERE "salarySlipId" = $2`,
-          [amount, slip.id]
+          `UPDATE "Transaction" SET amount = $1, "occurredAt" = $2::date, "updatedAt" = NOW()
+           WHERE "salarySlipId" = $3`,
+          [amount, row.paidAt, slip.id]
         );
       }
     }

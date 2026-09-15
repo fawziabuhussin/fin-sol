@@ -21,6 +21,7 @@
     "recategorize:smart": "tsx scripts/smart-recategorize-expenses.ts",
     "seed:categories": "tsx scripts/seed-expense-categories.ts",
     "update:bgu-jul-aug": "node scripts/update-bgu-jul-aug-2026.js",
+    "resync:bgu-income": "node scripts/resync-bgu-income-paid-at.js",
     "recategorize:isracard": "tsx scripts/recategorize-isracard.ts",
     "generate:favicons": "tsx scripts/generate-favicons.ts",
     "generate:ios-icons": "tsx scripts/generate-ios-icons.ts",
