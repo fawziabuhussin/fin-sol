@@ -9,16 +9,16 @@ import {
   FolderKanban,
   PiggyBank,
   WalletCards,
-  Presentation,
+  CreditCard,
 } from "lucide-react";
 
 const items = [
   { href: "/dashboard", label: "الرئيسية", icon: LayoutDashboard },
   { href: "/transactions", label: "معاملات", icon: ArrowRightLeft },
+  { href: "/splits", label: "أقساط", icon: CreditCard },
   { href: "/projects", label: "مشاريع", icon: FolderKanban },
   { href: "/savings", label: "ادخار", icon: PiggyBank },
   { href: "/salary", label: "راتب", icon: WalletCards },
-  { href: "/showcase", label: "التقرير", icon: Presentation },
 ];
 
 export function MobileBottomNav() {

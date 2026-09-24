@@ -1,18 +1,16 @@
 import { prisma } from "@/lib/db";
 import {
-  createUserProject,
-  ParentProjectNotFoundError,
-} from "@/lib/project-tree";
-import {
   buildInstallmentSchedule,
   clampInstallmentCount,
   normalizeDownPayment,
   recurringFromSplit,
 } from "@/lib/payment-plan";
-import { markInstallmentPaid } from "@/lib/installment-transactions";
-import { PaymentPlanMode, ProjectStatus } from "@/generated/prisma/client";
+import { markSplitInstallmentPaid } from "@/lib/split-payments";
+import { PaymentPlanMode } from "@/generated/prisma/client";
 import type { ExpenseInstallmentInput } from "@/lib/validations/payment-plan";
+import { ensureDbSchema } from "@/lib/ensure-schema";
 
+/** Leftover container from when splits were stored as projects. */
 export const SPLIT_EXPENSES_CONTAINER_TITLE = "مصاريف مقسطة";
 
 export class DownPaymentTooLargeError extends Error {
@@ -22,38 +20,11 @@ export class DownPaymentTooLargeError extends Error {
   }
 }
 
-async function resolveSplitParent(userId: string, parentId: string | null) {
-  if (parentId) {
-    const parent = await prisma.project.findFirst({
-      where: { id: parentId, userId, parentProjectId: null },
-      select: { id: true },
-    });
-    if (!parent) throw new ParentProjectNotFoundError();
-    return parent.id;
-  }
-
-  const existing = await prisma.project.findFirst({
-    where: {
-      userId,
-      parentProjectId: null,
-      title: SPLIT_EXPENSES_CONTAINER_TITLE,
-    },
-    select: { id: true },
-  });
-  if (existing) return existing.id;
-
-  const master = await createUserProject(userId, {
-    title: SPLIT_EXPENSES_CONTAINER_TITLE,
-    description: "مصاريف يومية مقسّمة على أشهر",
-    status: ProjectStatus.ACTIVE,
-  });
-  return master.id;
-}
-
 export async function createSplitExpense(
   userId: string,
   data: ExpenseInstallmentInput
 ) {
+  await ensureDbSchema();
   const count = clampInstallmentCount(data.installmentCount);
   const title =
     data.description?.trim() ||
@@ -64,44 +35,26 @@ export async function createSplitExpense(
   }
 
   const startDate = new Date(data.occurredAt);
-  const containerId = await resolveSplitParent(
-    userId,
-    data.parentProjectId || null
-  );
-
-  const child = await createUserProject(userId, {
-    title,
-    description: data.description || "",
-    totalBudget: data.amount,
-    targetDate: data.occurredAt,
-    status: ProjectStatus.ACTIVE,
-    parentProjectId: containerId ?? undefined,
-  });
-
-  const mode =
-    count === 1 ? PaymentPlanMode.FULL : PaymentPlanMode.INSTALLMENTS;
   const recurring = recurringFromSplit(data.amount, count, downPayment);
   const schedule = buildInstallmentSchedule({
-    mode,
+    mode: count === 1 ? PaymentPlanMode.FULL : PaymentPlanMode.INSTALLMENTS,
     totalAmount: data.amount,
     installmentCount: count,
     firstPaymentAmount: downPayment,
     startDate,
   });
 
-  const plan = await prisma.projectPaymentPlan.create({
+  const plan = await prisma.splitPaymentPlan.create({
     data: {
       userId,
-      projectId: child.id,
       title,
-      mode,
       totalAmount: data.amount,
       installmentCount: count,
       firstPaymentAmount: downPayment,
       recurringAmount: recurring,
-      payeeName: title,
-      startDate,
+      categoryId: data.categoryId || null,
       paymentMethodId: data.paymentMethodId || null,
+      startDate,
       installments: {
         create: schedule.map((s) => ({
           sequence: s.sequence,
@@ -116,18 +69,15 @@ export async function createSplitExpense(
   });
 
   if (data.payDownPaymentNow && plan.installments[0]) {
-    await markInstallmentPaid({
+    await markSplitInstallmentPaid({
       userId,
       installmentId: plan.installments[0].id,
       occurredAt: startDate,
-      categoryId: data.categoryId,
-      paymentMethodId: data.paymentMethodId,
     });
   }
 
   return {
-    id: child.id,
-    parentProjectId: containerId,
+    id: plan.id,
     planId: plan.id,
     installmentCount: count,
   };

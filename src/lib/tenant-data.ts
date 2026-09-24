@@ -25,6 +25,7 @@ import {
 } from "@/lib/installment-transactions";
 import { contractorBudgetTotal } from "@/lib/project-completion-utils";
 import { masterBudgetFromChildren, topLevelProjectWhere } from "@/lib/project-tree";
+import { SPLIT_EXPENSES_CONTAINER_TITLE } from "@/lib/expense-installments";
 import {
   aggregateExpensesByGroup,
   findUncategorizedExpenses,
@@ -1409,6 +1410,7 @@ export async function getLookups(userId: string) {
       where: {
         userId,
         ...topLevelProjectWhere,
+        title: { not: SPLIT_EXPENSES_CONTAINER_TITLE },
       },
       orderBy: { createdAt: "desc" },
     }),
@@ -1438,7 +1440,7 @@ export async function getQuickAddLookups(userId: string) {
       select: { id: true, name: true },
     }),
     prisma.project.findMany({
-      where: { userId, ...topLevelProjectWhere },
+      where: { userId, ...topLevelProjectWhere, title: { not: SPLIT_EXPENSES_CONTAINER_TITLE } },
       orderBy: { createdAt: "desc" },
       select: { id: true, title: true },
     }),
@@ -1575,6 +1577,7 @@ export async function getDashboardSummary(userId: string) {
     where: {
       userId,
       ...topLevelProjectWhere,
+      title: { not: SPLIT_EXPENSES_CONTAINER_TITLE },
     },
     orderBy: { createdAt: "desc" },
   });
@@ -1693,8 +1696,9 @@ export async function listProjects(params: {
   const where = {
     userId: params.userId,
     ...topLevelProjectWhere,
+    title: { not: SPLIT_EXPENSES_CONTAINER_TITLE },
     ...(params.q
-      ? { title: { contains: params.q, mode: "insensitive" as const } }
+      ? { AND: [{ title: { contains: params.q, mode: "insensitive" as const } }] }
       : {}),
   };
 

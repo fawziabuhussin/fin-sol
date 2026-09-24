@@ -17,6 +17,8 @@ import { cn } from "@/lib/utils";
 const segmentLabel: Record<string, string> = {
   dashboard: "لوحة التحكم",
   transactions: "المعاملات",
+  subscriptions: "الاشتراكات",
+  splits: "الأقساط",
   projects: "المشاريع",
   savings: "الجمعية والادخار",
   salary: "متابعة الراتب",

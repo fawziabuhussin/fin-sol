@@ -71,7 +71,6 @@ export function QuickAddSheet({
   const [installmentCount, setInstallmentCount] = useState(1);
   const [downPayment, setDownPayment] = useState("");
   const [payDownPaymentNow, setPayDownPaymentNow] = useState(false);
-  const [expenseParentId, setExpenseParentId] = useState("");
   const parentProjects = lookups.projects ?? [];
   const selectedPaymentMethod = lookups.paymentMethods.find(
     (m) => m.id === paymentMethodId
@@ -119,7 +118,6 @@ export function QuickAddSheet({
     setInstallmentCount(1);
     setDownPayment("");
     setPayDownPaymentNow(false);
-    setExpenseParentId("");
   }
 
   const usdHistoricalPurchase =
@@ -272,7 +270,6 @@ export function QuickAddSheet({
               payDownPaymentNow,
               categoryId: categoryId || null,
               paymentMethodId: paymentMethodId || null,
-              parentProjectId: expenseParentId || "",
             },
           }),
         });
@@ -291,8 +288,8 @@ export function QuickAddSheet({
         );
         reset();
         onOpenChange(false);
-        if (created?.id) router.push(`/projects/${created.id}`);
-        else router.refresh();
+        if (created?.id) router.push(`/splits/${created.id}`);
+        else router.push("/splits");
       });
       return;
     }
@@ -870,23 +867,9 @@ export function QuickAddSheet({
                       ? `ادفع ${DOWN_PAYMENT_LABEL} الآن`
                       : "ادفع القسط الأول الآن"}
                   </button>
-
-                  {parentProjects.length > 0 && (
-                    <div>
-                      <Label>ربط بمشروع (اختياري)</Label>
-                      <Select
-                        value={expenseParentId}
-                        onChange={(e) => setExpenseParentId(e.target.value)}
-                      >
-                        <option value="">مصاريف مقسطة</option>
-                        {parentProjects.map((p) => (
-                          <option key={p.id} value={p.id}>
-                            {p.title}
-                          </option>
-                        ))}
-                      </Select>
-                    </div>
-                  )}
+                  <p className="text-xs text-slate-500">
+                    سيظهر في صفحة الأقساط، وليس داخل المشاريع.
+                  </p>
                 </>
               )}
             </div>
