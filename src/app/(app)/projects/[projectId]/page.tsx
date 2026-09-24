@@ -2,7 +2,10 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/session";
 import { getBuildingProjectSummary, getProjectDetail, getLookups } from "@/lib/tenant-data";
-import { ProjectKind } from "@/generated/prisma/client";
+import {
+  isTopLevelMaster,
+  promoteMasterPaymentPlansToChildren,
+} from "@/lib/project-tree";
 import { BuildingDashboardClient } from "@/components/pages/building-dashboard-client";
 import { ProjectDetailClient } from "@/components/pages/project-detail-client";
 
@@ -16,12 +19,13 @@ export default async function ProjectDetailsPage({
 
   const project = await prisma.project.findFirst({
     where: { id: projectId, userId: user.id },
-    select: { kind: true },
+    select: { kind: true, parentProjectId: true },
   });
 
   if (!project) notFound();
 
-  if (project.kind === ProjectKind.MASTER_BUILD) {
+  if (isTopLevelMaster(project)) {
+    await promoteMasterPaymentPlansToChildren(user.id, projectId);
     const [summary, lookups] = await Promise.all([
       getBuildingProjectSummary(user.id, projectId),
       getLookups(user.id),

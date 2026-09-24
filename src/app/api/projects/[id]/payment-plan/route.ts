@@ -5,7 +5,12 @@ import { handleApiError } from "@/lib/api-error";
 import { paymentPlanSchema } from "@/lib/validations/payment-plan";
 import { buildInstallmentSchedule } from "@/lib/payment-plan";
 import { syncProjectStatusAfterFinancialChange } from "@/lib/project-completion";
-import { PaymentPlanMode } from "@/generated/prisma/client";
+import { PaymentPlanMode, ProjectKind } from "@/generated/prisma/client";
+import {
+  childKindForParent,
+  childTitleFromPaymentPlan,
+  isTopLevelMaster,
+} from "@/lib/project-tree";
 
 export async function POST(
   req: Request,
@@ -28,6 +33,24 @@ export async function POST(
     }
 
     const data = parsed.data;
+    let targetProjectId = projectId;
+
+    // Payment plans belong on nested items, not the container (like Building).
+    if (isTopLevelMaster(project) && project.kind === ProjectKind.GENERAL) {
+      const child = await prisma.project.create({
+        data: {
+          userId: user.id,
+          parentProjectId: project.id,
+          kind: childKindForParent(),
+          title: childTitleFromPaymentPlan(data, project.title),
+          totalBudget: data.totalAmount,
+          status: project.status,
+          targetDate: project.targetDate,
+        },
+      });
+      targetProjectId = child.id;
+    }
+
     const recurring =
       data.mode === PaymentPlanMode.INSTALLMENTS && data.installmentCount
         ? Math.round(
@@ -47,14 +70,14 @@ export async function POST(
     });
 
     await prisma.project.update({
-      where: { id: projectId },
+      where: { id: targetProjectId },
       data: { totalBudget: data.totalAmount },
     });
 
     const plan = await prisma.projectPaymentPlan.create({
       data: {
         userId: user.id,
-        projectId,
+        projectId: targetProjectId,
         title: data.title || null,
         mode: data.mode as PaymentPlanMode,
         totalAmount: data.totalAmount,
@@ -77,7 +100,7 @@ export async function POST(
       include: { installments: true },
     });
 
-    await syncProjectStatusAfterFinancialChange(projectId, prisma, {
+    await syncProjectStatusAfterFinancialChange(targetProjectId, prisma, {
       totalBudget: data.totalAmount,
     });
 

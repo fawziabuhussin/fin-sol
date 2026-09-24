@@ -7,6 +7,10 @@ import { savingsAssetPurchaseSchema } from "@/lib/validations/savings";
 import { getMarketRates } from "@/lib/market-rates";
 import { computeAssetValueIls } from "@/lib/savings-asset-value";
 import { createAssetPurchaseTransaction } from "@/lib/savings-contribution";
+import {
+  createUserProject,
+  ParentProjectNotFoundError,
+} from "@/lib/project-tree";
 
 const quickAddSchema = {
   TRANSACTION: transactionSchema,
@@ -157,18 +161,12 @@ export async function POST(req: Request) {
     }
 
     const d = parsed.data;
-    const item = await prisma.project.create({
-      data: {
-        userId: user.id,
-        title: d.title,
-        description: d.description || null,
-        totalBudget: d.totalBudget ?? null,
-        targetDate: d.targetDate ? new Date(d.targetDate) : null,
-        status: d.status,
-      },
-    });
+    const item = await createUserProject(user.id, d);
     return NextResponse.json(item, { status: 201 });
-  } catch {
+  } catch (error) {
+    if (error instanceof ParentProjectNotFoundError) {
+      return NextResponse.json({ error: "Parent not found" }, { status: 404 });
+    }
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 }

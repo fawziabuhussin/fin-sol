@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
@@ -21,8 +21,10 @@ import {
   Calendar,
   CheckCircle2,
   Clock,
+  FolderKanban,
   Hammer,
   Play,
+  Plus,
   RotateCcw,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -37,6 +39,7 @@ import {
   type ExistingPaymentPlan,
 } from "@/components/forms/building-payment-sheet";
 import { isContractorFullyPaid } from "@/lib/project-completion-utils";
+import { ProjectSheet } from "@/components/forms/project-sheet";
 
 type Contractor = {
   id: string;
@@ -54,7 +57,9 @@ type Contractor = {
 type Summary = {
   master: {
     id: string;
+    kind: string;
     title: string;
+    status: string;
     totalBudget: number;
     paidToDate: number;
     remaining: number;
@@ -229,6 +234,11 @@ export function BuildingDashboardClient({
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
+  const [childSheetOpen, setChildSheetOpen] = useState(false);
+  const isBuild = summary.master.kind === "MASTER_BUILD";
+  const childLabel = isBuild ? "مقاول" : "بند";
+  const childLabelPlural = isBuild ? "المقاولون" : "البنود";
+  const KindIcon = isBuild ? Building2 : FolderKanban;
 
   const { activeContractors, completedContractors, plannedContractors } =
     useMemo(() => {
@@ -302,8 +312,8 @@ export function BuildingDashboardClient({
           <div className="absolute inset-0 bg-gradient-to-t from-slate-900/80 to-transparent" />
           <div className="absolute bottom-4 right-4 left-4 text-white">
             <div className="flex items-center gap-2 text-sm text-slate-200">
-              <Building2 className="h-4 w-4" />
-              مشروع البناء
+              <KindIcon className="h-4 w-4" />
+              {isBuild ? "مشروع البناء" : "مشروع"}
             </div>
             <h1 className="text-2xl font-extrabold sm:text-3xl">{summary.master.title}</h1>
           </div>
@@ -335,6 +345,35 @@ export function BuildingDashboardClient({
         ))}
       </div>
 
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-sm text-slate-600">
+          {isBuild
+            ? "أضف مقاولين وخطط دفع داخل مشروع البناء."
+            : "أضف بنوداً داخل المشروع (قاعة، DJ، تصوير...) ثم أنشئ خطة دفع لكل بند."}
+        </p>
+        <Button className="gap-2" onClick={() => setChildSheetOpen(true)}>
+          <Plus className="h-4 w-4" />
+          {isBuild ? "مقاول جديد" : "بند جديد"}
+        </Button>
+      </div>
+
+      {summary.contractors.length === 0 && (
+        <Card className="border-dashed border-indigo-200 bg-indigo-50/30">
+          <CardContent className="p-6 text-center">
+            <KindIcon className="mx-auto h-8 w-8 text-indigo-400" />
+            <p className="mt-2 font-bold text-slate-900">لا توجد {childLabelPlural} بعد</p>
+            <p className="mt-1 text-sm text-slate-600">
+              المشروع الرئيسي فارغ. أضف {childLabel} داخله ليظهر هنا مع خطة الدفع، مثل البناء.
+            </p>
+            <Button className="mt-4 gap-2" onClick={() => setChildSheetOpen(true)}>
+              <Plus className="h-4 w-4" />
+              {isBuild ? "مقاول جديد" : "بند جديد"}
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {summary.contractors.length > 0 && (
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
           <CardHeader>
@@ -356,7 +395,11 @@ export function BuildingDashboardClient({
 
         <Card>
           <CardHeader>
-            <CardTitle>المقاولون النشطون — حسب الإنفاق</CardTitle>
+            <CardTitle>
+              {isBuild
+                ? "المقاولون النشطون — حسب الإنفاق"
+                : "البنود النشطة — حسب الإنفاق"}
+            </CardTitle>
           </CardHeader>
           <CardContent className="h-64">
             <ResponsiveContainer width="100%" height="100%">
@@ -371,6 +414,7 @@ export function BuildingDashboardClient({
           </CardContent>
         </Card>
       </div>
+      )}
 
       {summary.upcomingInstallments.length > 0 && (
         <Card>
@@ -411,7 +455,7 @@ export function BuildingDashboardClient({
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Hammer className="h-5 w-5" />
+              {isBuild ? <Hammer className="h-5 w-5" /> : <FolderKanban className="h-5 w-5" />}
               قيد التنفيذ ({activeContractors.length})
             </CardTitle>
           </CardHeader>
@@ -439,7 +483,7 @@ export function BuildingDashboardClient({
           </CardHeader>
           <CardContent className="space-y-3">
             <p className="text-sm text-emerald-800/80">
-              لإضافة ميزانية جديدة وإرجاع المقاول لقيد التنفيذ، استخدم «زيادة
+              لإضافة ميزانية جديدة وإرجاع {childLabel} لقيد التنفيذ، استخدم «زيادة
               الميزانية» أو «إعادة فتح».
             </p>
             {completedContractors.map((c) => (
@@ -480,6 +524,16 @@ export function BuildingDashboardClient({
           </CardContent>
         </Card>
       )}
+
+      <ProjectSheet
+        open={childSheetOpen}
+        onOpenChange={setChildSheetOpen}
+        parentProjectId={summary.master.id}
+        variant="child"
+        initial={{
+          status: summary.master.status === "PLANNED" ? "PLANNED" : "ACTIVE",
+        }}
+      />
     </div>
   );
 }

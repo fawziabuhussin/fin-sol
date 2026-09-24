@@ -168,7 +168,8 @@ export function ProjectDetailClient({
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
-  const isContractor = detail.kind === "BUILD_CONTRACTOR";
+  const isContractor =
+    detail.kind === "BUILD_CONTRACTOR" || Boolean(detail.parent);
   const [selectedPlanId, setSelectedPlanId] = useState(
     detail.plans[0]?.id ?? detail.paymentPlans[0]?.id ?? ""
   );
