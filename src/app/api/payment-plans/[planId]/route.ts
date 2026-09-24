@@ -5,7 +5,12 @@ import { handleApiError } from "@/lib/api-error";
 import { planEditSchema } from "@/lib/validations/payment-plan";
 import {
   amountsBySequence,
+  clampInstallmentCount,
+  DOWN_PAYMENT_LABEL,
   dueDateForSequence,
+  installmentLabel,
+  normalizeDownPayment,
+  recurringFromSplit,
 } from "@/lib/payment-plan";
 import { syncProjectStatusAfterFinancialChange } from "@/lib/project-completion";
 import { InstallmentStatus, PaymentPlanMode } from "@/generated/prisma/client";
@@ -35,18 +40,35 @@ export async function PATCH(
 
     const mode = (d.mode ?? plan.mode) as PaymentPlanMode;
     const totalAmount = d.totalAmount ?? Number(plan.totalAmount);
-    const installmentCount = d.installmentCount ?? plan.installmentCount ?? 2;
     const firstPaymentAmount =
-      d.firstPaymentAmount ?? Number(plan.firstPaymentAmount ?? 0);
+      d.firstPaymentAmount !== undefined
+        ? normalizeDownPayment(d.firstPaymentAmount)
+        : normalizeDownPayment(
+            plan.firstPaymentAmount != null
+              ? Number(plan.firstPaymentAmount)
+              : null
+          );
+    const installmentCount =
+      mode === PaymentPlanMode.FULL
+        ? 1
+        : clampInstallmentCount(d.installmentCount ?? plan.installmentCount ?? 1);
     const startDate = d.startDate
       ? new Date(d.startDate)
       : plan.startDate ?? new Date();
 
+    const paid = plan.installments.filter(
+      (i) => i.status === InstallmentStatus.PAID
+    );
+    if (installmentCount < paid.length) {
+      return NextResponse.json(
+        { error: "لا يمكن تقليل عدد الأقساط عن الدفعات المدفوعة" },
+        { status: 400 }
+      );
+    }
+
     const recurring =
-      mode === PaymentPlanMode.INSTALLMENTS && installmentCount > 1
-        ? Math.round(
-            ((totalAmount - firstPaymentAmount) / (installmentCount - 1)) * 100
-          ) / 100
+      mode === PaymentPlanMode.INSTALLMENTS
+        ? recurringFromSplit(totalAmount, installmentCount, firstPaymentAmount)
         : null;
 
     const startChanged =
@@ -67,33 +89,49 @@ export async function PATCH(
           ...(d.paymentMethodId !== undefined
             ? { paymentMethodId: d.paymentMethodId || null }
             : {}),
+          ...(d.categoryId !== undefined
+            ? { categoryId: d.categoryId || null }
+            : {}),
           ...(d.startDate !== undefined ? { startDate } : {}),
           ...(d.mode !== undefined ? { mode } : {}),
           ...(d.totalAmount !== undefined ? { totalAmount } : {}),
-          ...(d.installmentCount !== undefined ? { installmentCount } : {}),
-          ...(d.firstPaymentAmount !== undefined ? { firstPaymentAmount } : {}),
+          installmentCount,
+          firstPaymentAmount,
           recurringAmount: recurring,
         },
       });
 
-      const pending = plan.installments.filter(
-        (i) => i.status === InstallmentStatus.PENDING
-      );
-
-      if (pending.length > 0 && (startChanged || amountsChanged)) {
+      if (startChanged || amountsChanged) {
+        const pending = plan.installments.filter(
+          (i) => i.status === InstallmentStatus.PENDING
+        );
         const amountMap =
           mode === PaymentPlanMode.INSTALLMENTS
             ? amountsBySequence(totalAmount, firstPaymentAmount, installmentCount)
             : new Map([[1, totalAmount]]);
+        const explicitDown = firstPaymentAmount != null;
 
-        for (const inst of pending) {
-          const data: { dueDate?: Date; amount?: number } = {};
+        const toDelete = pending.filter((i) => i.sequence > installmentCount);
+        if (toDelete.length > 0) {
+          await tx.projectInstallment.deleteMany({
+            where: { id: { in: toDelete.map((i) => i.id) } },
+          });
+        }
+
+        const keepPending = pending.filter((i) => i.sequence <= installmentCount);
+        for (const inst of keepPending) {
+          const data: { dueDate?: Date; amount?: number; label?: string } = {};
           if (startChanged) {
             data.dueDate = dueDateForSequence(startDate, inst.sequence);
           }
           if (amountsChanged) {
             const amt = amountMap.get(inst.sequence);
             if (amt != null) data.amount = amt;
+            if (inst.sequence === 1) {
+              data.label = explicitDown
+                ? DOWN_PAYMENT_LABEL
+                : installmentLabel(1);
+            }
           }
           if (Object.keys(data).length > 0) {
             await tx.projectInstallment.update({
@@ -101,6 +139,27 @@ export async function PATCH(
               data,
             });
           }
+        }
+
+        const remainingSeqs = new Set([
+          ...paid.map((i) => i.sequence),
+          ...keepPending.map((i) => i.sequence),
+        ]);
+        for (let seq = 1; seq <= installmentCount; seq++) {
+          if (remainingSeqs.has(seq)) continue;
+          await tx.projectInstallment.create({
+            data: {
+              planId,
+              sequence: seq,
+              label:
+                seq === 1 && explicitDown
+                  ? DOWN_PAYMENT_LABEL
+                  : installmentLabel(seq),
+              dueDate: dueDateForSequence(startDate, seq),
+              amount: amountMap.get(seq) ?? 0,
+              status: InstallmentStatus.PENDING,
+            },
+          });
         }
       }
 

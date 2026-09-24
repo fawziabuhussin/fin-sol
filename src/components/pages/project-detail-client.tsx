@@ -476,7 +476,7 @@ export function ProjectDetailClient({
               defaultTotal={detail.remaining > 0 ? detail.remaining : detail.totalBudget}
               defaultPayee={plan?.payeeName ?? detail.title}
               existingPlan={plan}
-              triggerLabel={plan ? "تعديل خطة الدفع" : "إنشاء خطة دفع"}
+              triggerLabel={plan ? "تعديل كل الدفعات" : "إنشاء خطة دفع"}
             />
             {detail.plans.length > 0 && (
               <BuildingPaymentSheet
@@ -590,7 +590,7 @@ export function ProjectDetailClient({
             </div>
             {plan.firstPaymentAmount != null && (
               <div>
-                <span className="text-slate-500">الدفعة الأولى: </span>
+                <span className="text-slate-500">מקדימה / مقدّمة: </span>
                 {formatCurrency(plan.firstPaymentAmount)}
               </div>
             )}
@@ -625,6 +625,12 @@ export function ProjectDetailClient({
           </div>
         </CardHeader>
         <CardContent className="space-y-2">
+          {planInstallments.length > 0 && (
+            <p className="text-xs text-slate-500">
+              قلم التعديل يغيّر هذه الدفعة فقط. «تعديل كل الدفعات» يحدّث الأقساط
+              المعلّقة معاً.
+            </p>
+          )}
           {adding && plan && (
             <div className="rounded-xl border border-indigo-100 bg-indigo-50/40 p-3">
               <p className="mb-2 text-sm font-semibold text-indigo-900">دفعة جديدة</p>
@@ -731,7 +737,7 @@ export function ProjectDetailClient({
                         type="button"
                         onClick={() => (isEditing ? setEditingId(null) : startEditInstallment(inst))}
                         className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-                        aria-label="تعديل"
+                        aria-label="تعديل هذه الدفعة فقط"
                       >
                         {isEditing ? <X className="h-4 w-4" /> : <Pencil className="h-4 w-4" />}
                       </button>
@@ -793,6 +799,12 @@ export function ProjectDetailClient({
                       {isPaid && (
                         <p className="mt-2 text-xs text-emerald-700">
                           تعديل المبلغ أو التاريخ يحدّث السجل المرتبط في «سجل المدفوعات».
+                        </p>
+                      )}
+                      {!isPaid && (
+                        <p className="mt-2 text-xs text-slate-500">
+                          يُحفظ هذا القسط فقط — بقية الدفعات لا تتغيّر. لتعديل الكل
+                          استخدم «تعديل كل الدفعات».
                         </p>
                       )}
                       <div className="mt-2 flex gap-2">

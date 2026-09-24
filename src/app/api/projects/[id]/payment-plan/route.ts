@@ -3,7 +3,12 @@ import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/session";
 import { handleApiError } from "@/lib/api-error";
 import { paymentPlanSchema } from "@/lib/validations/payment-plan";
-import { buildInstallmentSchedule } from "@/lib/payment-plan";
+import {
+  buildInstallmentSchedule,
+  normalizeDownPayment,
+  recurringFromSplit,
+} from "@/lib/payment-plan";
+import { markInstallmentPaid } from "@/lib/installment-transactions";
 import { syncProjectStatusAfterFinancialChange } from "@/lib/project-completion";
 import { PaymentPlanMode, ProjectKind } from "@/generated/prisma/client";
 import {
@@ -51,13 +56,14 @@ export async function POST(
       targetProjectId = child.id;
     }
 
+    const downPayment = normalizeDownPayment(data.firstPaymentAmount);
     const recurring =
-      data.mode === PaymentPlanMode.INSTALLMENTS && data.installmentCount
-        ? Math.round(
-            ((data.totalAmount - (data.firstPaymentAmount ?? 0)) /
-              (data.installmentCount - 1)) *
-              100
-          ) / 100
+      data.mode === PaymentPlanMode.INSTALLMENTS
+        ? recurringFromSplit(
+            data.totalAmount,
+            data.installmentCount ?? 1,
+            downPayment
+          )
         : null;
 
     const startDate = data.startDate ? new Date(data.startDate) : new Date();
@@ -65,7 +71,7 @@ export async function POST(
       mode: data.mode as PaymentPlanMode,
       totalAmount: data.totalAmount,
       installmentCount: data.installmentCount,
-      firstPaymentAmount: data.firstPaymentAmount,
+      firstPaymentAmount: downPayment,
       startDate,
     });
 
@@ -82,11 +88,12 @@ export async function POST(
         mode: data.mode as PaymentPlanMode,
         totalAmount: data.totalAmount,
         installmentCount: data.installmentCount ?? null,
-        firstPaymentAmount: data.firstPaymentAmount ?? null,
+        firstPaymentAmount: downPayment,
         recurringAmount: recurring,
         payeeName: data.payeeName || null,
         startDate: startDate,
         paymentMethodId: data.paymentMethodId || null,
+        categoryId: data.categoryId || null,
         installments: {
           create: schedule.map((s) => ({
             sequence: s.sequence,
@@ -97,8 +104,18 @@ export async function POST(
           })),
         },
       },
-      include: { installments: true },
+      include: { installments: { orderBy: { sequence: "asc" } } },
     });
+
+    if (data.payFirstNow && plan.installments[0]) {
+      await markInstallmentPaid({
+        userId: user.id,
+        installmentId: plan.installments[0].id,
+        occurredAt: startDate,
+        categoryId: data.categoryId,
+        paymentMethodId: data.paymentMethodId,
+      });
+    }
 
     await syncProjectStatusAfterFinancialChange(targetProjectId, prisma, {
       totalBudget: data.totalAmount,

@@ -4,6 +4,7 @@ import { requireUser } from "@/lib/session";
 import { transactionSchema } from "@/lib/validations/transactions";
 import { projectSchema } from "@/lib/validations/projects";
 import { savingsAssetPurchaseSchema } from "@/lib/validations/savings";
+import { expenseInstallmentSchema } from "@/lib/validations/payment-plan";
 import { getMarketRates } from "@/lib/market-rates";
 import { computeAssetValueIls } from "@/lib/savings-asset-value";
 import { createAssetPurchaseTransaction } from "@/lib/savings-contribution";
@@ -11,11 +12,17 @@ import {
   createUserProject,
   ParentProjectNotFoundError,
 } from "@/lib/project-tree";
+import {
+  createSplitExpense,
+  DownPaymentTooLargeError,
+} from "@/lib/expense-installments";
+import { handleApiError } from "@/lib/api-error";
 
 const quickAddSchema = {
   TRANSACTION: transactionSchema,
   PROJECT: projectSchema,
   SAVINGS_ASSET: savingsAssetPurchaseSchema,
+  EXPENSE_INSTALLMENTS: expenseInstallmentSchema,
 } as const;
 
 export async function POST(req: Request) {
@@ -131,6 +138,15 @@ export async function POST(req: Request) {
       return NextResponse.json({ asset, entry, transaction: tx }, { status: 201 });
     }
 
+    if (body.kind === "EXPENSE_INSTALLMENTS") {
+      const parsed = quickAddSchema.EXPENSE_INSTALLMENTS.safeParse(body.payload);
+      if (!parsed.success) {
+        return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+      }
+      const item = await createSplitExpense(user.id, parsed.data);
+      return NextResponse.json(item, { status: 201 });
+    }
+
     if (body.kind === "TRANSACTION") {
       const parsed = quickAddSchema.TRANSACTION.safeParse(body.payload);
       if (!parsed.success) {
@@ -176,6 +192,12 @@ export async function POST(req: Request) {
     if (error instanceof ParentProjectNotFoundError) {
       return NextResponse.json({ error: "Parent not found" }, { status: 404 });
     }
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (error instanceof DownPaymentTooLargeError) {
+      return NextResponse.json(
+        { error: "المقدمة أكبر من أو تساوي المبلغ الإجمالي" },
+        { status: 400 }
+      );
+    }
+    return handleApiError(error);
   }
 }
