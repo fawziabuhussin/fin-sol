@@ -109,11 +109,12 @@ export async function seedWeddingVendors(userId: string, masterId: string) {
   let seeded = 0;
 
   for (const vendor of WEDDING_VENDORS) {
-    const existing = await prisma.project.findFirst({
-      where: { userId, parentProjectId: masterId, title: vendor.title },
-      select: { id: true },
-    });
-    if (existing) continue;
+    try {
+      const existing = await prisma.project.findFirst({
+        where: { userId, parentProjectId: masterId, title: vendor.title },
+        select: { id: true },
+      });
+      if (existing) continue;
 
     const hasArabon = vendor.arabon != null && vendor.arabon > 0;
     const child = await prisma.project.create({
@@ -186,6 +187,9 @@ export async function seedWeddingVendors(userId: string, masterId: string) {
     }
 
     seeded += 1;
+    } catch (error) {
+      console.error(`[wedding] failed to seed ${vendor.title}`, error);
+    }
   }
 
   return { seeded };
