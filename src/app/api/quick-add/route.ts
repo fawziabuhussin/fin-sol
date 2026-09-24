@@ -16,6 +16,7 @@ import {
   createSplitExpense,
   DownPaymentTooLargeError,
 } from "@/lib/expense-installments";
+import { seedWeddingVendorsIfEmpty } from "@/lib/wedding-vendors";
 import { handleApiError } from "@/lib/api-error";
 
 const quickAddSchema = {
@@ -178,6 +179,9 @@ export async function POST(req: Request) {
 
     const d = parsed.data;
     const item = await createUserProject(user.id, d);
+    if (!item.parentProjectId) {
+      await seedWeddingVendorsIfEmpty(user.id, item.id);
+    }
     return NextResponse.json(
       {
         id: item.id,

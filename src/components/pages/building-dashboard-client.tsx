@@ -41,6 +41,7 @@ import {
 } from "@/components/forms/building-payment-sheet";
 import { isContractorFullyPaid } from "@/lib/project-completion-utils";
 import { ProjectSheet } from "@/components/forms/project-sheet";
+import { isWeddingProjectTitle } from "@/lib/wedding-title";
 
 type Contractor = {
   id: string;
@@ -235,6 +236,7 @@ export function BuildingDashboardClient({
   const [isPending, startTransition] = useTransition();
   const [childSheetOpen, setChildSheetOpen] = useState(false);
   const isBuild = summary.master.kind === "MASTER_BUILD";
+  const isWedding = isWeddingProjectTitle(summary.master.title);
   const childLabel = isBuild ? "مقاول" : "بند";
   const childLabelPlural = isBuild ? "المقاولون" : "البنود";
   const KindIcon = isBuild ? Building2 : FolderKanban;
@@ -257,6 +259,26 @@ export function BuildingDashboardClient({
         plannedContractors: planned,
       };
     }, [summary.contractors]);
+
+  const seedWeddingVendors = () => {
+    startTransition(async () => {
+      const res = await fetch(
+        `/api/projects/${summary.master.id}/seed-wedding-vendors`,
+        { method: "POST" }
+      );
+      if (!res.ok) {
+        toast.error("تعذّر إضافة بنود العرس");
+        return;
+      }
+      const data = await res.json().catch(() => ({ seeded: 0 }));
+      toast.success(
+        data.seeded
+          ? `تمت إضافة ${data.seeded} بنود للعرس (عربون هذا الشهر والمتبقي في أيار)`
+          : "بنود العرس موجودة مسبقاً"
+      );
+      router.refresh();
+    });
+  };
 
   const setStatus = (id: string, status: string) => {
     startTransition(async () => {
@@ -360,10 +382,23 @@ export function BuildingDashboardClient({
             ? "أضف مقاولين وخطط دفع داخل مشروع البناء."
             : "أضف بنوداً داخل المشروع (قاعة، DJ، تصوير...) ثم أنشئ خطة دفع لكل بند."}
         </p>
-        <Button className="gap-2" onClick={() => setChildSheetOpen(true)}>
-          <Plus className="h-4 w-4" />
-          {isBuild ? "مقاول جديد" : "بند جديد"}
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button className="gap-2" onClick={() => setChildSheetOpen(true)}>
+            <Plus className="h-4 w-4" />
+            {isBuild ? "مقاول جديد" : "بند جديد"}
+          </Button>
+          {isWedding && (
+            <Button
+              variant="outline"
+              className="gap-2"
+              disabled={isPending}
+              onClick={seedWeddingVendors}
+            >
+              <Plus className="h-4 w-4" />
+              بنود العرس (مصورة، DJ، قاعة...)
+            </Button>
+          )}
+        </div>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">

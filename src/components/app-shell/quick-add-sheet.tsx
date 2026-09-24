@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Coffee, Coins, DollarSign, FolderKanban, ListPlus, Minus, Plus, Check } from "lucide-react";
+import { Coffee, Coins, CreditCard, DollarSign, FolderKanban, ListPlus, Minus, Plus, Check } from "lucide-react";
 import { toast } from "sonner";
 import {
   Sheet,
@@ -21,6 +21,7 @@ import {
   DOWN_PAYMENT_LABEL,
   resolveInstallmentAmounts,
 } from "@/lib/payment-plan";
+import { isCreditCardMethod } from "@/lib/payment-methods";
 
 export type QuickAddLookups = {
   categories: { id: string; name: string; kind: string }[];
@@ -72,6 +73,10 @@ export function QuickAddSheet({
   const [payDownPaymentNow, setPayDownPaymentNow] = useState(false);
   const [expenseParentId, setExpenseParentId] = useState("");
   const parentProjects = lookups.projects ?? [];
+  const selectedPaymentMethod = lookups.paymentMethods.find(
+    (m) => m.id === paymentMethodId
+  );
+  const isCardPayment = isCreditCardMethod(selectedPaymentMethod?.name);
 
   const fetchLiveUsd = useCallback(async () => {
     try {
@@ -714,114 +719,6 @@ export function QuickAddSheet({
             </div>
           </div>
 
-          {type === "EXPENSE" && (
-            <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4">
-              <div>
-                <Label>تقسيم شهري (1–24)</Label>
-                <Select
-                  value={String(installmentCount)}
-                  onChange={(e) => {
-                    const next = Number(e.target.value);
-                    setInstallmentCount(next);
-                    if (next <= 1) {
-                      setDownPayment("");
-                      setPayDownPaymentNow(false);
-                    }
-                  }}
-                >
-                  {Array.from({ length: 24 }, (_, i) => i + 1).map((n) => (
-                    <option key={n} value={n}>
-                      {n === 1 ? "دفعة واحدة (بدون تقسيط)" : `${n} أشهر`}
-                    </option>
-                  ))}
-                </Select>
-                <p className="mt-1 text-xs text-slate-500">
-                  يقسّم المبلغ على أشهر متتالية. يمكنك لاحقاً تعديل قسط واحد أو كل
-                  الدفعات.
-                </p>
-              </div>
-
-              {installmentCount > 1 && (
-                <>
-                  <div>
-                    <Label>{DOWN_PAYMENT_LABEL} (اختياري)</Label>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      min={0}
-                      value={downPayment}
-                      onChange={(e) => setDownPayment(e.target.value)}
-                      placeholder="اتركه فارغاً لتقسيم متساوٍ"
-                    />
-                  </div>
-
-                  {splitPreview?.invalid ? (
-                    <p className="rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700">
-                      المقدمة يجب أن تكون أصغر من المبلغ الإجمالي
-                    </p>
-                  ) : splitPreview ? (
-                    <p className="rounded-lg bg-indigo-50 px-3 py-2 text-xs text-indigo-900">
-                      {splitPreview.hasDown ? (
-                        <>
-                          {DOWN_PAYMENT_LABEL}: {formatCurrency(splitPreview.first)} ·{" "}
-                          {installmentCount - 1} أقساط ×{" "}
-                          {formatCurrency(splitPreview.monthly)}
-                        </>
-                      ) : (
-                        <>
-                          {installmentCount} أقساط ×{" "}
-                          {formatCurrency(splitPreview.monthly)}
-                        </>
-                      )}
-                    </p>
-                  ) : null}
-
-                  <button
-                    type="button"
-                    onClick={() => setPayDownPaymentNow((v) => !v)}
-                    className={cn(
-                      "flex w-full items-center gap-2 rounded-xl border px-3 py-2 text-start text-sm font-medium",
-                      payDownPaymentNow
-                        ? "border-indigo-500 bg-indigo-50 text-indigo-800"
-                        : "border-slate-200 bg-white text-slate-700"
-                    )}
-                  >
-                    <span
-                      className={cn(
-                        "flex h-5 w-5 items-center justify-center rounded border",
-                        payDownPaymentNow
-                          ? "border-indigo-600 bg-indigo-600 text-white"
-                          : "border-slate-300 bg-white text-transparent"
-                      )}
-                    >
-                      <Check className="h-3.5 w-3.5" strokeWidth={3} />
-                    </span>
-                    {downPayment && Number(downPayment) > 0
-                      ? `ادفع ${DOWN_PAYMENT_LABEL} الآن`
-                      : "ادفع القسط الأول الآن"}
-                  </button>
-
-                  {parentProjects.length > 0 && (
-                    <div>
-                      <Label>ربط بمشروع (اختياري)</Label>
-                      <Select
-                        value={expenseParentId}
-                        onChange={(e) => setExpenseParentId(e.target.value)}
-                      >
-                        <option value="">مصاريف مقسطة</option>
-                        {parentProjects.map((p) => (
-                          <option key={p.id} value={p.id}>
-                            {p.title}
-                          </option>
-                        ))}
-                      </Select>
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-          )}
-
           {/* Category chips */}
           {categories.length > 0 && (
             <div>
@@ -878,6 +775,122 @@ export function QuickAddSheet({
               </div>
             )}
           </div>
+
+          {type === "EXPENSE" && (
+            <div
+              className={cn(
+                "space-y-3 rounded-2xl border p-4",
+                isCardPayment
+                  ? "border-indigo-200 bg-indigo-50/50"
+                  : "border-slate-200 bg-white"
+              )}
+            >
+              <div>
+                <Label className="flex items-center gap-1.5">
+                  <CreditCard className="h-4 w-4" />
+                  عدد الدفعات (תשלומים) 1–24
+                </Label>
+                <Select
+                  value={String(installmentCount)}
+                  onChange={(e) => {
+                    const next = Number(e.target.value);
+                    setInstallmentCount(next);
+                    if (next <= 1) {
+                      setDownPayment("");
+                      setPayDownPaymentNow(false);
+                    }
+                  }}
+                >
+                  {Array.from({ length: 24 }, (_, i) => i + 1).map((n) => (
+                    <option key={n} value={n}>
+                      {n === 1 ? "دفعة واحدة" : `${n} دفعات`}
+                    </option>
+                  ))}
+                </Select>
+                <p className="mt-1 text-xs text-slate-500">
+                  اختر البطاقة ثم عدد الدفعات. يمكنك تعديل قسط واحد لاحقاً أو كل
+                  الدفعات معاً.
+                </p>
+              </div>
+
+              {installmentCount > 1 && (
+                <>
+                  <div>
+                    <Label>{DOWN_PAYMENT_LABEL} (اختياري)</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min={0}
+                      value={downPayment}
+                      onChange={(e) => setDownPayment(e.target.value)}
+                      placeholder="اتركه فارغاً لتقسيم متساوٍ"
+                    />
+                  </div>
+
+                  {splitPreview?.invalid ? (
+                    <p className="rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700">
+                      المقدمة يجب أن تكون أصغر من المبلغ الإجمالي
+                    </p>
+                  ) : splitPreview ? (
+                    <p className="rounded-lg bg-white px-3 py-2 text-xs text-indigo-900">
+                      {splitPreview.hasDown ? (
+                        <>
+                          {DOWN_PAYMENT_LABEL}: {formatCurrency(splitPreview.first)} ·{" "}
+                          {installmentCount - 1} × {formatCurrency(splitPreview.monthly)}
+                        </>
+                      ) : (
+                        <>
+                          {installmentCount} دفعات × {formatCurrency(splitPreview.monthly)}
+                        </>
+                      )}
+                    </p>
+                  ) : null}
+
+                  <button
+                    type="button"
+                    onClick={() => setPayDownPaymentNow((v) => !v)}
+                    className={cn(
+                      "flex w-full items-center gap-2 rounded-xl border px-3 py-2 text-start text-sm font-medium",
+                      payDownPaymentNow
+                        ? "border-indigo-500 bg-indigo-50 text-indigo-800"
+                        : "border-slate-200 bg-white text-slate-700"
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "flex h-5 w-5 items-center justify-center rounded border",
+                        payDownPaymentNow
+                          ? "border-indigo-600 bg-indigo-600 text-white"
+                          : "border-slate-300 bg-white text-transparent"
+                      )}
+                    >
+                      <Check className="h-3.5 w-3.5" strokeWidth={3} />
+                    </span>
+                    {downPayment && Number(downPayment) > 0
+                      ? `ادفع ${DOWN_PAYMENT_LABEL} الآن`
+                      : "ادفع القسط الأول الآن"}
+                  </button>
+
+                  {parentProjects.length > 0 && (
+                    <div>
+                      <Label>ربط بمشروع (اختياري)</Label>
+                      <Select
+                        value={expenseParentId}
+                        onChange={(e) => setExpenseParentId(e.target.value)}
+                      >
+                        <option value="">مصاريف مقسطة</option>
+                        {parentProjects.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.title}
+                          </option>
+                        ))}
+                      </Select>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
 
           <div>
             <Label>ملاحظة</Label>

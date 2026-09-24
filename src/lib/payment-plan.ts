@@ -89,6 +89,8 @@ export function buildInstallmentSchedule(params: {
   startDate: Date;
   dueDates?: Date[];
   recurringAmount?: number;
+  labels?: (string | undefined)[];
+  firstLabel?: string;
 }) {
   const count =
     params.mode === PaymentPlanMode.FULL
@@ -104,8 +106,13 @@ export function buildInstallmentSchedule(params: {
   return amounts.map((amount, i) => ({
     sequence: i + 1,
     label:
-      i === 0 && explicitDown ? DOWN_PAYMENT_LABEL : installmentLabel(i + 1),
-    dueDate: params.dueDates?.[i] ?? (i === 0 ? params.startDate : addMonthsUTC(params.startDate, i)),
+      params.labels?.[i] ||
+      (i === 0 && explicitDown
+        ? params.firstLabel || DOWN_PAYMENT_LABEL
+        : installmentLabel(i + 1)),
+    dueDate:
+      params.dueDates?.[i] ??
+      (i === 0 ? params.startDate : addMonthsUTC(params.startDate, i)),
     amount,
     status: InstallmentStatus.PENDING,
   }));

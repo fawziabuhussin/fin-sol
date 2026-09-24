@@ -6,6 +6,7 @@ import {
   createUserProject,
   ParentProjectNotFoundError,
 } from "@/lib/project-tree";
+import { seedWeddingVendorsIfEmpty } from "@/lib/wedding-vendors";
 
 export async function POST(req: Request) {
   try {
@@ -17,6 +18,9 @@ export async function POST(req: Request) {
     }
 
     const created = await createUserProject(user.id, parsed.data);
+    if (!created.parentProjectId) {
+      await seedWeddingVendorsIfEmpty(user.id, created.id);
+    }
     return NextResponse.json(
       {
         id: created.id,
