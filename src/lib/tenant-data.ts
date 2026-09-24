@@ -1105,7 +1105,7 @@ export async function getProjectDetail(userId: string, projectId: string) {
     where: {
       id: projectId,
       userId,
-      kind: { not: ProjectKind.MASTER_BUILD },
+      parentProjectId: { not: null },
     },
     include: {
       parent: { select: { id: true, title: true } },

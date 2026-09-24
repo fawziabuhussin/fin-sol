@@ -17,6 +17,7 @@ import {
   YAxis,
 } from "recharts";
 import {
+  ArrowRight,
   Building2,
   Calendar,
   CheckCircle2,
@@ -148,7 +149,11 @@ function ContractorCard({
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {!isPlanned && (
+          {isPlanned ? (
+            <span className="text-sm font-semibold text-indigo-700">
+              {formatCurrency(c.totalBudget)}
+            </span>
+          ) : (
             <>
               <span className="text-sm font-bold text-emerald-700">
                 {formatCurrency(c.paid)}
@@ -159,27 +164,21 @@ function ContractorCard({
               </span>
             </>
           )}
-          {isPlanned ? (
-            <span className="text-sm font-semibold text-indigo-700">
-              {formatCurrency(c.totalBudget)}
-            </span>
-          ) : (
-            <BuildingPaymentSheet
-              projectId={c.id}
-              projectTitle={c.title}
-              paymentMethods={paymentMethods}
-              defaultTotal={c.remaining > 0 ? c.remaining : c.totalBudget}
-              defaultPayee={c.title}
-              existingPlan={c.paymentPlan}
-              triggerLabel={
-                c.paymentPlan
-                  ? isCompleted
-                    ? "زيادة الميزانية"
-                    : "تعديل خطة الدفع"
-                  : "خطة دفع"
-              }
-            />
-          )}
+          <BuildingPaymentSheet
+            projectId={c.id}
+            projectTitle={c.title}
+            paymentMethods={paymentMethods}
+            defaultTotal={c.remaining > 0 ? c.remaining : c.totalBudget}
+            defaultPayee={c.title}
+            existingPlan={c.paymentPlan}
+            triggerLabel={
+              c.paymentPlan
+                ? isCompleted
+                  ? "زيادة الميزانية"
+                  : "تعديل خطة الدفع"
+                : "خطة دفع"
+            }
+          />
           {isPlanned ? (
             <Button
               size="sm"
@@ -296,6 +295,16 @@ export function BuildingDashboardClient({
 
   return (
     <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <Link
+          href="/projects"
+          className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-800"
+        >
+          <ArrowRight className="h-4 w-4" />
+          كل المشاريع
+        </Link>
+      </div>
+
       <motion.div
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
@@ -357,23 +366,6 @@ export function BuildingDashboardClient({
         </Button>
       </div>
 
-      {summary.contractors.length === 0 && (
-        <Card className="border-dashed border-indigo-200 bg-indigo-50/30">
-          <CardContent className="p-6 text-center">
-            <KindIcon className="mx-auto h-8 w-8 text-indigo-400" />
-            <p className="mt-2 font-bold text-slate-900">لا توجد {childLabelPlural} بعد</p>
-            <p className="mt-1 text-sm text-slate-600">
-              المشروع الرئيسي فارغ. أضف {childLabel} داخله ليظهر هنا مع خطة الدفع، مثل البناء.
-            </p>
-            <Button className="mt-4 gap-2" onClick={() => setChildSheetOpen(true)}>
-              <Plus className="h-4 w-4" />
-              {isBuild ? "مقاول جديد" : "بند جديد"}
-            </Button>
-          </CardContent>
-        </Card>
-      )}
-
-      {summary.contractors.length > 0 && (
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
           <CardHeader>
@@ -402,19 +394,24 @@ export function BuildingDashboardClient({
             </CardTitle>
           </CardHeader>
           <CardContent className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={barData} layout="vertical" margin={{ left: 8 }}>
-                <XAxis type="number" hide />
-                <YAxis type="category" dataKey="name" width={80} tick={{ fontSize: 10 }} />
-                <Tooltip formatter={(v) => formatCurrency(Number(v))} />
-                <Bar dataKey="paid" stackId="a" fill="#059669" radius={[0, 4, 4, 0]} />
-                <Bar dataKey="remaining" stackId="a" fill="#fca5a5" radius={[0, 4, 4, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+            {barData.length === 0 ? (
+              <div className="flex h-full items-center justify-center text-sm text-slate-400">
+                أضف بنوداً وابدأ التنفيذ لتظهر هنا
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={barData} layout="vertical" margin={{ left: 8 }}>
+                  <XAxis type="number" hide />
+                  <YAxis type="category" dataKey="name" width={80} tick={{ fontSize: 10 }} />
+                  <Tooltip formatter={(v) => formatCurrency(Number(v))} />
+                  <Bar dataKey="paid" stackId="a" fill="#059669" radius={[0, 4, 4, 0]} />
+                  <Bar dataKey="remaining" stackId="a" fill="#fca5a5" radius={[0, 4, 4, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
           </CardContent>
         </Card>
       </div>
-      )}
 
       {summary.upcomingInstallments.length > 0 && (
         <Card>
@@ -499,20 +496,39 @@ export function BuildingDashboardClient({
         </Card>
       )}
 
-      {plannedContractors.length > 0 && (
-        <Card className="border-indigo-100 bg-indigo-50/20">
-          <CardHeader>
+      <Card className="border-indigo-100 bg-indigo-50/20">
+        <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
             <CardTitle className="flex items-center gap-2 text-indigo-900">
               <Clock className="h-5 w-5" />
               مخطط للمستقبل ({plannedContractors.length})
             </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <p className="text-sm text-indigo-800/80">
+            <p className="mt-2 text-sm text-indigo-800/80">
               هذه البنود لا تُحتسب في الدفعات القادمة حتى تضغط «بدء التنفيذ».
               حدّد تاريخ البداية من صفحة المشروع.
             </p>
-            {plannedContractors.map((c) => (
+          </div>
+          <Button
+            variant="outline"
+            className="gap-2 border-indigo-200"
+            onClick={() => setChildSheetOpen(true)}
+          >
+            <Plus className="h-4 w-4" />
+            {isBuild ? "مقاول للمستقبل" : "بند للمستقبل"}
+          </Button>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {plannedContractors.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-indigo-200 bg-white/60 p-5 text-center">
+              <p className="font-semibold text-slate-800">
+                لا توجد {childLabelPlural} مخطط لها بعد
+              </p>
+              <p className="mt-1 text-sm text-slate-500">
+                أضف {childLabel} (قاعة، DJ، تصوير، مقاول...) وسيظهر هنا حتى تبدأ التنفيذ.
+              </p>
+            </div>
+          ) : (
+            plannedContractors.map((c) => (
               <ContractorCard
                 key={c.id}
                 c={c}
@@ -520,10 +536,10 @@ export function BuildingDashboardClient({
                 onStatusChange={setStatus}
                 isPending={isPending}
               />
-            ))}
-          </CardContent>
-        </Card>
-      )}
+            ))
+          )}
+        </CardContent>
+      </Card>
 
       <ProjectSheet
         open={childSheetOpen}
@@ -531,7 +547,7 @@ export function BuildingDashboardClient({
         parentProjectId={summary.master.id}
         variant="child"
         initial={{
-          status: summary.master.status === "PLANNED" ? "PLANNED" : "ACTIVE",
+          status: "PLANNED",
         }}
       />
     </div>

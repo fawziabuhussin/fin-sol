@@ -9,6 +9,8 @@ import {
 import { BuildingDashboardClient } from "@/components/pages/building-dashboard-client";
 import { ProjectDetailClient } from "@/components/pages/project-detail-client";
 
+export const dynamic = "force-dynamic";
+
 export default async function ProjectDetailsPage({
   params,
 }: {

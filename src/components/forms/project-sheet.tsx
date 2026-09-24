@@ -45,7 +45,7 @@ export function ProjectSheet({
       profession: initial?.profession ?? "",
       totalBudget: initial?.totalBudget ?? undefined,
       targetDate: initial?.targetDate ?? "",
-      status: initial?.status ?? (isChild ? "ACTIVE" : "PLANNED"),
+      status: initial?.status ?? "PLANNED",
     },
   });
 
@@ -57,7 +57,7 @@ export function ProjectSheet({
       profession: initial?.profession ?? "",
       totalBudget: initial?.totalBudget ?? undefined,
       targetDate: initial?.targetDate ?? "",
-      status: initial?.status ?? (isChild ? "ACTIVE" : "PLANNED"),
+      status: initial?.status ?? "PLANNED",
     });
     // Reset only when the sheet opens or the target project changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps

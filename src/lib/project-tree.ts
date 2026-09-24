@@ -2,25 +2,16 @@ import { prisma } from "@/lib/db";
 import type { ProjectInput } from "@/lib/validations/projects";
 import { ProjectKind } from "@/generated/prisma/client";
 
-export const TOP_LEVEL_KINDS = [
-  ProjectKind.MASTER_BUILD,
-  ProjectKind.GENERAL,
-] as const;
-
+/** A project is a container dashboard iff it has no parent — same as Building. */
 export const topLevelProjectWhere = {
   parentProjectId: null,
-  kind: { in: [...TOP_LEVEL_KINDS] },
 };
 
 export function isTopLevelMaster(project: {
-  kind: string;
+  kind?: string;
   parentProjectId?: string | null;
 }) {
-  return (
-    !project.parentProjectId &&
-    (project.kind === ProjectKind.MASTER_BUILD ||
-      project.kind === ProjectKind.GENERAL)
-  );
+  return !project.parentProjectId;
 }
 
 export function childKindForParent() {
@@ -74,7 +65,7 @@ export async function createUserProject(userId: string, data: ProjectInput) {
       totalBudget: data.totalBudget ?? null,
       targetDate: data.targetDate ? new Date(data.targetDate) : null,
       status: data.status,
-      imageUrl: parentProjectId ? null : "/placeholders/project.svg",
+      imageUrl: parentProjectId ? null : "/placeholders/banner.svg",
     },
   });
 }
@@ -109,7 +100,7 @@ export async function promoteMasterPaymentPlansToChildren(
     },
   });
 
-  if (!master || master.kind !== ProjectKind.GENERAL) return;
+  if (!master || master.kind === ProjectKind.MASTER_BUILD) return;
   if (master.paymentPlans.length === 0) return;
 
   await prisma.$transaction(async (tx) => {
