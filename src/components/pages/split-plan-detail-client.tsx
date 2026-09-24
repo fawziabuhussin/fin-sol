@@ -225,7 +225,11 @@ export function SplitPlanDetailClient({
             </p>
           </div>
           <div className="flex flex-wrap gap-2 sm:flex-col sm:items-end">
-            <SplitPlanEditSheet plan={plan} paymentMethods={paymentMethods} />
+            <SplitPlanEditSheet
+              key={`${plan.id}-${plan.totalAmount}-${plan.installmentCount}-${plan.startDate}`}
+              plan={plan}
+              paymentMethods={paymentMethods}
+            />
             <Button
               variant="ghost"
               size="sm"
