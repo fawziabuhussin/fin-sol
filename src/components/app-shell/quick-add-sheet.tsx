@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Coffee, Coins, DollarSign, Minus, Plus } from "lucide-react";
+import { Coffee, Coins, DollarSign, FolderKanban, ListPlus, Minus, Plus } from "lucide-react";
 import { toast } from "sonner";
 import {
   Sheet,
@@ -21,6 +21,7 @@ import { isLocalTodayDate, localTodayIso } from "@/lib/dates";
 export type QuickAddLookups = {
   categories: { id: string; name: string; kind: string }[];
   paymentMethods: { id: string; name: string }[];
+  projects?: { id: string; title: string }[];
 };
 
 const today = localTodayIso;
@@ -41,7 +42,9 @@ export function QuickAddSheet({
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
-  const [mode, setMode] = useState<"TRANSACTION" | "SAVINGS_ASSET">("TRANSACTION");
+  const [mode, setMode] = useState<"TRANSACTION" | "SAVINGS_ASSET" | "PROJECT">(
+    "TRANSACTION"
+  );
   const [type, setType] = useState<"EXPENSE" | "INCOME">("EXPENSE");
   const [amount, setAmount] = useState("");
   const [categoryId, setCategoryId] = useState<string>("");
@@ -53,6 +56,14 @@ export function QuickAddSheet({
   const [assetUnitPrice, setAssetUnitPrice] = useState("");
   const [goldKarat, setGoldKarat] = useState(21);
   const [liveUsdIls, setLiveUsdIls] = useState<number | null>(null);
+  const [projectTitle, setProjectTitle] = useState("");
+  const [projectBudget, setProjectBudget] = useState("");
+  const [projectDate, setProjectDate] = useState(today);
+  const [projectStatus, setProjectStatus] = useState<"PLANNED" | "ACTIVE">("PLANNED");
+  const [projectPlacement, setProjectPlacement] = useState<"new" | "nested">("new");
+  const [parentProjectId, setParentProjectId] = useState("");
+  const [projectProfession, setProjectProfession] = useState("");
+  const parentProjects = lookups.projects ?? [];
 
   const fetchLiveUsd = useCallback(async () => {
     try {
@@ -85,6 +96,13 @@ export function QuickAddSheet({
     setPaymentMethodId("");
     setAssetQuantity("");
     setAssetUnitPrice("");
+    setProjectTitle("");
+    setProjectBudget("");
+    setProjectDate(today());
+    setProjectStatus("PLANNED");
+    setProjectPlacement("new");
+    setParentProjectId("");
+    setProjectProfession("");
   }
 
   const usdHistoricalPurchase =
@@ -100,6 +118,49 @@ export function QuickAddSheet({
       : null;
 
   function submit() {
+    if (mode === "PROJECT") {
+      const title = projectTitle.trim();
+      if (title.length < 2) {
+        toast.error("أدخل عنوان المشروع");
+        return;
+      }
+      const nested = projectPlacement === "nested";
+      if (nested && !parentProjectId) {
+        toast.error("اختر المشروع الرئيسي من القائمة");
+        return;
+      }
+      startTransition(async () => {
+        const res = await fetch("/api/quick-add", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            kind: "PROJECT",
+            payload: {
+              title,
+              description: description || "",
+              profession: nested ? projectProfession : "",
+              totalBudget: projectBudget ? Number(projectBudget) : null,
+              targetDate: projectDate || null,
+              status: projectStatus,
+              parentProjectId: nested ? parentProjectId : "",
+            },
+          }),
+        });
+        if (!res.ok) {
+          toast.error("تعذّر الحفظ");
+          return;
+        }
+        const created = await res.json().catch(() => null);
+        toast.success(nested ? "تمت إضافة البند داخل المشروع" : "تم إنشاء المشروع");
+        reset();
+        onOpenChange(false);
+        const dest = nested ? parentProjectId : created?.id;
+        if (dest) router.push(`/projects/${dest}`);
+        else router.refresh();
+      });
+      return;
+    }
+
     if (mode === "SAVINGS_ASSET") {
       const qty = Number(assetQuantity);
       const price = Number(assetUnitPrice);
@@ -205,19 +266,21 @@ export function QuickAddSheet({
                 إضافة سريعة
               </SheetTitle>
               <SheetDescription>
-                مصاريف يومية بسيطة (قهوة، مشتريات اليوم...). للمشاريع استخدم صفحة المشاريع.
+                {mode === "PROJECT"
+                  ? "أنشئ مشروعاً رئيسياً، أو أضف بنداً تحت مشروع موجود من القائمة."
+                  : "مصاريف يومية بسيطة (قهوة، مشتريات اليوم...). للمشاريع اختر تبويب المشروع."}
               </SheetDescription>
             </SheetHeader>
           </div>
 
           <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-6 py-5">
           {/* Mode: transaction vs savings asset */}
-          <div className="grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1">
+          <div className="grid grid-cols-3 gap-1 rounded-xl bg-slate-100 p-1">
             <button
               type="button"
               onClick={() => setMode("TRANSACTION")}
               className={cn(
-                "flex items-center justify-center gap-1.5 rounded-lg py-2 text-sm font-semibold transition-all",
+                "flex items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-semibold transition-all sm:text-sm",
                 mode === "TRANSACTION"
                   ? "bg-white text-indigo-700 shadow-sm"
                   : "text-slate-500 hover:text-slate-700"
@@ -229,13 +292,25 @@ export function QuickAddSheet({
               type="button"
               onClick={() => setMode("SAVINGS_ASSET")}
               className={cn(
-                "flex items-center justify-center gap-1.5 rounded-lg py-2 text-sm font-semibold transition-all",
+                "flex items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-semibold transition-all sm:text-sm",
                 mode === "SAVINGS_ASSET"
                   ? "bg-white text-amber-700 shadow-sm"
                   : "text-slate-500 hover:text-slate-700"
               )}
             >
               <Coins className="h-4 w-4" /> ادخار
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode("PROJECT")}
+              className={cn(
+                "flex items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-semibold transition-all sm:text-sm",
+                mode === "PROJECT"
+                  ? "bg-white text-indigo-700 shadow-sm"
+                  : "text-slate-500 hover:text-slate-700"
+              )}
+            >
+              <FolderKanban className="h-4 w-4" /> مشروع
             </button>
           </div>
 
@@ -382,6 +457,125 @@ export function QuickAddSheet({
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   placeholder="مصدر الشراء..."
+                />
+              </div>
+            </>
+          ) : mode === "PROJECT" ? (
+            <>
+              <div className="grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1">
+                <button
+                  type="button"
+                  onClick={() => setProjectPlacement("new")}
+                  className={cn(
+                    "flex items-center justify-center gap-1.5 rounded-lg py-2 text-sm font-semibold transition-all",
+                    projectPlacement === "new"
+                      ? "bg-white text-indigo-700 shadow-sm"
+                      : "text-slate-500 hover:text-slate-700"
+                  )}
+                >
+                  <FolderKanban className="h-4 w-4" />
+                  مشروع رئيسي
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setProjectPlacement("nested")}
+                  disabled={parentProjects.length === 0}
+                  className={cn(
+                    "flex items-center justify-center gap-1.5 rounded-lg py-2 text-sm font-semibold transition-all",
+                    projectPlacement === "nested"
+                      ? "bg-white text-indigo-700 shadow-sm"
+                      : "text-slate-500 hover:text-slate-700",
+                    parentProjects.length === 0 && "cursor-not-allowed opacity-50"
+                  )}
+                >
+                  <ListPlus className="h-4 w-4" />
+                  بند داخل مشروع
+                </button>
+              </div>
+
+              {projectPlacement === "nested" && (
+                <div>
+                  <Label>أضف إلى مشروع</Label>
+                  <Select
+                    value={parentProjectId}
+                    onChange={(e) => setParentProjectId(e.target.value)}
+                  >
+                    <option value="">اختر مشروعاً موجوداً...</option>
+                    {parentProjects.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.title}
+                      </option>
+                    ))}
+                  </Select>
+                  <p className="mt-1 text-xs text-slate-500">
+                    المشروع الواحد يضم أكثر من بند (قاعة، DJ، مقاول...).
+                  </p>
+                </div>
+              )}
+
+              <div>
+                <Label>العنوان</Label>
+                <Input
+                  value={projectTitle}
+                  onChange={(e) => setProjectTitle(e.target.value)}
+                  placeholder={
+                    projectPlacement === "nested"
+                      ? "مثال: DJ، قاعة، مصور"
+                      : "مثال: العرس، بناء البيت"
+                  }
+                />
+              </div>
+
+              {projectPlacement === "nested" && (
+                <div>
+                  <Label>المهنة / الدور</Label>
+                  <Input
+                    value={projectProfession}
+                    onChange={(e) => setProjectProfession(e.target.value)}
+                    placeholder="مثال: DJ، مصور"
+                  />
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label>الميزانية</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    value={projectBudget}
+                    onChange={(e) => setProjectBudget(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <Label>تاريخ البداية</Label>
+                  <Input
+                    type="date"
+                    value={projectDate}
+                    onChange={(e) => setProjectDate(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <Label>الحالة</Label>
+                <Select
+                  value={projectStatus}
+                  onChange={(e) =>
+                    setProjectStatus(e.target.value as "PLANNED" | "ACTIVE")
+                  }
+                >
+                  <option value="PLANNED">مخطط للمستقبل</option>
+                  <option value="ACTIVE">قيد التنفيذ</option>
+                </Select>
+              </div>
+
+              <div>
+                <Label>ملاحظة</Label>
+                <Input
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder="وصف مختصر..."
                 />
               </div>
             </>

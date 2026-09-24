@@ -1416,7 +1416,7 @@ export async function getLookups(userId: string) {
  * Excludes the building category so daily spending stays separate from build.
  */
 export async function getQuickAddLookups(userId: string) {
-  const [categories, paymentMethods] = await Promise.all([
+  const [categories, paymentMethods, projects] = await Promise.all([
     prisma.category.findMany({
       where: {
         userId,
@@ -1432,8 +1432,13 @@ export async function getQuickAddLookups(userId: string) {
       orderBy: { name: "asc" },
       select: { id: true, name: true },
     }),
+    prisma.project.findMany({
+      where: { userId, ...topLevelProjectWhere },
+      orderBy: { createdAt: "desc" },
+      select: { id: true, title: true },
+    }),
   ]);
-  return { categories, paymentMethods };
+  return { categories, paymentMethods, projects };
 }
 
 export async function listEmployers(userId: string) {

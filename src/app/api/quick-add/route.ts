@@ -162,7 +162,16 @@ export async function POST(req: Request) {
 
     const d = parsed.data;
     const item = await createUserProject(user.id, d);
-    return NextResponse.json(item, { status: 201 });
+    return NextResponse.json(
+      {
+        id: item.id,
+        title: item.title,
+        kind: item.kind,
+        parentProjectId: item.parentProjectId,
+        status: item.status,
+      },
+      { status: 201 }
+    );
   } catch (error) {
     if (error instanceof ParentProjectNotFoundError) {
       return NextResponse.json({ error: "Parent not found" }, { status: 404 });

@@ -545,6 +545,8 @@ export function BuildingDashboardClient({
         open={childSheetOpen}
         onOpenChange={setChildSheetOpen}
         parentProjectId={summary.master.id}
+        parentTitle={summary.master.title}
+        parentOptions={[{ id: summary.master.id, title: summary.master.title }]}
         variant="child"
         initial={{
           status: "PLANNED",

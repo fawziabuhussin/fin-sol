@@ -147,6 +147,7 @@ export function ProjectsPageClient({
         open={sheetOpen}
         onOpenChange={setSheetOpen}
         projectId={editing?.id}
+        parentOptions={data.map((p) => ({ id: p.id, title: p.title }))}
         initial={
           editing
             ? {
