@@ -31,9 +31,73 @@ type InstallmentWithPlan = {
     projectId: string;
     payeeName: string | null;
     paymentMethodId: string | null;
+    categoryId?: string | null;
     project: { title: string };
   };
 };
+
+export async function categoryIdForInstallmentPlan(
+  userId: string,
+  categoryId?: string | null
+) {
+  if (categoryId) return categoryId;
+  return ensureBuildCategoryId(userId);
+}
+
+/** Mark a pending installment paid and create the linked expense. */
+export async function markInstallmentPaid(params: {
+  userId: string;
+  installmentId: string;
+  occurredAt?: Date;
+  categoryId?: string | null;
+  paymentMethodId?: string | null;
+  notes?: string | null;
+}) {
+  const installment = await prisma.projectInstallment.findFirst({
+    where: { id: params.installmentId, plan: { userId: params.userId } },
+    include: { plan: { include: { project: true } } },
+  });
+  if (!installment || installment.status === InstallmentStatus.PAID) {
+    return null;
+  }
+
+  const categoryId = await categoryIdForInstallmentPlan(
+    params.userId,
+    params.categoryId ?? installment.plan.categoryId
+  );
+  const occurredAt = params.occurredAt ?? installment.dueDate;
+  const label = installment.label ?? `قسط ${installment.sequence}`;
+  const description = installmentTransactionDescription(
+    label,
+    installment.plan.payeeName,
+    installment.plan.project.title
+  );
+
+  const tx = await prisma.transaction.create({
+    data: {
+      userId: params.userId,
+      projectId: installment.plan.projectId,
+      categoryId,
+      paymentMethodId:
+        params.paymentMethodId ?? installment.plan.paymentMethodId,
+      type: TransactionType.EXPENSE,
+      amount: installment.amount,
+      occurredAt,
+      description,
+      notes: params.notes ?? null,
+    },
+  });
+
+  const updated = await prisma.projectInstallment.update({
+    where: { id: installment.id },
+    data: {
+      status: InstallmentStatus.PAID,
+      transactionId: tx.id,
+    },
+  });
+
+  return { installment: updated, transaction: tx };
+}
 
 /** Sync linked expense row when a paid installment is edited. */
 export async function syncLinkedInstallmentTransaction(

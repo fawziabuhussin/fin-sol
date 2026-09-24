@@ -1,25 +1,26 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/session";
+import { prisma } from "@/lib/db";
 import { handleApiError } from "@/lib/api-error";
-import { markInstallmentPaid } from "@/lib/installment-transactions";
+import { seedWeddingVendors } from "@/lib/wedding-vendors";
+import { isTopLevelMaster } from "@/lib/project-tree";
 
-export async function PATCH(
-  req: Request,
+export async function POST(
+  _req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const user = await requireUser();
     const { id } = await params;
-    const body = (await req.json()) as { occurredAt?: string };
-
-    const result = await markInstallmentPaid({
-      userId: user.id,
-      installmentId: id,
-      occurredAt: body.occurredAt ? new Date(body.occurredAt) : undefined,
+    const project = await prisma.project.findFirst({
+      where: { id, userId: user.id },
+      select: { id: true, parentProjectId: true },
     });
-    if (!result) {
+    if (!project || !isTopLevelMaster(project)) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
+
+    const result = await seedWeddingVendors(user.id, project.id);
     return NextResponse.json(result);
   } catch (error) {
     return handleApiError(error);

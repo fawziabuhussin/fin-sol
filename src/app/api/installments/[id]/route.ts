@@ -5,6 +5,7 @@ import { handleApiError } from "@/lib/api-error";
 import {
   installmentTransactionDescription,
   syncLinkedInstallmentTransaction,
+  categoryIdForInstallmentPlan,
 } from "@/lib/installment-transactions";
 import { ensureBuildCategoryId } from "@/lib/build-category";
 import { installmentEditSchema } from "@/lib/validations/payment-plan";
@@ -45,7 +46,10 @@ export async function PATCH(
     const wasPaid = installment.status === InstallmentStatus.PAID;
 
     if (body.paid === true && !wasPaid) {
-      const categoryId = await ensureBuildCategoryId(user.id);
+      const categoryId = await categoryIdForInstallmentPlan(
+        user.id,
+        installment.plan.categoryId
+      );
       const occurredAt = body.occurredAt
         ? new Date(body.occurredAt)
         : newDueDate;

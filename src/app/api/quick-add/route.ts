@@ -4,14 +4,26 @@ import { requireUser } from "@/lib/session";
 import { transactionSchema } from "@/lib/validations/transactions";
 import { projectSchema } from "@/lib/validations/projects";
 import { savingsAssetPurchaseSchema } from "@/lib/validations/savings";
+import { expenseInstallmentSchema } from "@/lib/validations/payment-plan";
 import { getMarketRates } from "@/lib/market-rates";
 import { computeAssetValueIls } from "@/lib/savings-asset-value";
 import { createAssetPurchaseTransaction } from "@/lib/savings-contribution";
+import {
+  createUserProject,
+  ParentProjectNotFoundError,
+} from "@/lib/project-tree";
+import {
+  createSplitExpense,
+  DownPaymentTooLargeError,
+} from "@/lib/expense-installments";
+import { seedWeddingVendorsIfEmpty } from "@/lib/wedding-vendors";
+import { handleApiError } from "@/lib/api-error";
 
 const quickAddSchema = {
   TRANSACTION: transactionSchema,
   PROJECT: projectSchema,
   SAVINGS_ASSET: savingsAssetPurchaseSchema,
+  EXPENSE_INSTALLMENTS: expenseInstallmentSchema,
 } as const;
 
 export async function POST(req: Request) {
@@ -127,6 +139,15 @@ export async function POST(req: Request) {
       return NextResponse.json({ asset, entry, transaction: tx }, { status: 201 });
     }
 
+    if (body.kind === "EXPENSE_INSTALLMENTS") {
+      const parsed = quickAddSchema.EXPENSE_INSTALLMENTS.safeParse(body.payload);
+      if (!parsed.success) {
+        return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+      }
+      const item = await createSplitExpense(user.id, parsed.data);
+      return NextResponse.json(item, { status: 201 });
+    }
+
     if (body.kind === "TRANSACTION") {
       const parsed = quickAddSchema.TRANSACTION.safeParse(body.payload);
       if (!parsed.success) {
@@ -157,18 +178,30 @@ export async function POST(req: Request) {
     }
 
     const d = parsed.data;
-    const item = await prisma.project.create({
-      data: {
-        userId: user.id,
-        title: d.title,
-        description: d.description || null,
-        totalBudget: d.totalBudget ?? null,
-        targetDate: d.targetDate ? new Date(d.targetDate) : null,
-        status: d.status,
+    const item = await createUserProject(user.id, d);
+    if (!item.parentProjectId) {
+      await seedWeddingVendorsIfEmpty(user.id, item.id);
+    }
+    return NextResponse.json(
+      {
+        id: item.id,
+        title: item.title,
+        kind: item.kind,
+        parentProjectId: item.parentProjectId,
+        status: item.status,
       },
-    });
-    return NextResponse.json(item, { status: 201 });
-  } catch {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      { status: 201 }
+    );
+  } catch (error) {
+    if (error instanceof ParentProjectNotFoundError) {
+      return NextResponse.json({ error: "Parent not found" }, { status: 404 });
+    }
+    if (error instanceof DownPaymentTooLargeError) {
+      return NextResponse.json(
+        { error: "المقدمة أكبر من أو تساوي المبلغ الإجمالي" },
+        { status: 400 }
+      );
+    }
+    return handleApiError(error);
   }
 }

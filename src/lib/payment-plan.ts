@@ -1,4 +1,6 @@
-import { PaymentPlanMode, InstallmentStatus } from "@/generated/prisma/client";
+import { PaymentPlanMode, InstallmentStatus } from "@/generated/prisma/enums";
+
+export const DOWN_PAYMENT_LABEL = "מקדימה / مقدّمة";
 
 const INSTALLMENT_LABELS = [
   "الدفعة الأولى",
@@ -11,6 +13,8 @@ const INSTALLMENT_LABELS = [
   "الدفعة الثامنة",
   "الدفعة التاسعة",
   "الدفعة العاشرة",
+  "الدفعة الحادية عشر",
+  "الدفعة الثانية عشر",
 ];
 
 export function installmentLabel(sequence: number): string {
@@ -18,6 +22,48 @@ export function installmentLabel(sequence: number): string {
 }
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
+
+export function clampInstallmentCount(count?: number) {
+  const n = Math.trunc(count ?? 1);
+  return Math.min(24, Math.max(1, n));
+}
+
+/** Treat 0 / empty as “no מקדימה” so the total is split evenly. */
+export function normalizeDownPayment(amount?: number | null) {
+  if (amount == null || Number.isNaN(amount) || amount <= 0) return null;
+  return round2(amount);
+}
+
+/**
+ * Split `totalAmount` into `installmentCount` (1–24) monthly amounts.
+ * If `firstPaymentAmount` is set, that is the מקדימה / مقدّمة and the rest
+ * is split across the remaining months. Otherwise every month is even.
+ */
+export function resolveInstallmentAmounts(
+  totalAmount: number,
+  installmentCount: number,
+  firstPaymentAmount?: number | null
+): number[] {
+  const count = clampInstallmentCount(installmentCount);
+  const total = round2(totalAmount);
+  if (count === 1) return [total];
+
+  const even = round2(total / count);
+  const firstSpecified = normalizeDownPayment(firstPaymentAmount) != null;
+  const first = firstSpecified ? round2(firstPaymentAmount!) : even;
+  const remaining = Math.max(0, round2(total - first));
+  const recurringCount = count - 1;
+  const base = round2(remaining / recurringCount);
+  const amounts = [first];
+  let allocated = 0;
+  for (let i = 1; i <= recurringCount; i++) {
+    const isLast = i === recurringCount;
+    const amount = isLast ? round2(remaining - allocated) : base;
+    allocated = round2(allocated + base);
+    amounts.push(amount);
+  }
+  return amounts;
+}
 
 /**
  * Adds `months` to a date while keeping the same day-of-month, clamping to the
@@ -39,68 +85,37 @@ export function buildInstallmentSchedule(params: {
   mode: PaymentPlanMode;
   totalAmount: number;
   installmentCount?: number;
-  firstPaymentAmount?: number;
+  firstPaymentAmount?: number | null;
   startDate: Date;
   dueDates?: Date[];
   recurringAmount?: number;
+  labels?: (string | undefined)[];
+  firstLabel?: string;
 }) {
-  if (params.mode === PaymentPlanMode.FULL) {
-    return [
-      {
-        sequence: 1,
-        label: installmentLabel(1),
-        dueDate: params.startDate,
-        amount: params.totalAmount,
-        status: InstallmentStatus.PENDING,
-      },
-    ];
-  }
+  const count =
+    params.mode === PaymentPlanMode.FULL
+      ? 1
+      : clampInstallmentCount(params.installmentCount);
+  const down =
+    params.mode === PaymentPlanMode.FULL
+      ? null
+      : normalizeDownPayment(params.firstPaymentAmount);
+  const amounts = resolveInstallmentAmounts(params.totalAmount, count, down);
+  const explicitDown = down != null;
 
-  const count = Math.max(2, params.installmentCount ?? 2);
-  const first = round2(params.firstPaymentAmount ?? 0);
-  const recurringCount = count - 1;
-  const remaining = Math.max(0, round2(params.totalAmount - first));
-
-  // Even split of the remainder across the recurring installments; any rounding
-  // drift is absorbed by the last installment so the schedule sums to the total.
-  const baseRecurring =
-    params.recurringAmount != null
-      ? round2(params.recurringAmount)
-      : round2(remaining / recurringCount);
-
-  const schedule: {
-    sequence: number;
-    label: string;
-    dueDate: Date;
-    amount: number;
-    status: typeof InstallmentStatus.PENDING;
-  }[] = [];
-
-  // 1) First payment (down payment) on the start point.
-  schedule.push({
-    sequence: 1,
-    label: installmentLabel(1),
-    dueDate: params.dueDates?.[0] ?? params.startDate,
-    amount: first,
+  return amounts.map((amount, i) => ({
+    sequence: i + 1,
+    label:
+      params.labels?.[i] ||
+      (i === 0 && explicitDown
+        ? params.firstLabel || DOWN_PAYMENT_LABEL
+        : installmentLabel(i + 1)),
+    dueDate:
+      params.dueDates?.[i] ??
+      (i === 0 ? params.startDate : addMonthsUTC(params.startDate, i)),
+    amount,
     status: InstallmentStatus.PENDING,
-  });
-
-  // 2) Remaining installments, one per month starting the month after the start.
-  let allocated = 0;
-  for (let i = 1; i <= recurringCount; i++) {
-    const isLast = i === recurringCount;
-    const amount = isLast ? round2(remaining - allocated) : baseRecurring;
-    allocated = round2(allocated + baseRecurring);
-    schedule.push({
-      sequence: i + 1,
-      label: installmentLabel(i + 1),
-      dueDate: params.dueDates?.[i] ?? addMonthsUTC(params.startDate, i),
-      amount,
-      status: InstallmentStatus.PENDING,
-    });
-  }
-
-  return schedule;
+  }));
 }
 
 /** Due date for installment `sequence` (1-based) from the plan start point. */
@@ -112,22 +127,29 @@ export function dueDateForSequence(startDate: Date, sequence: number): Date {
 /** Map sequence → amount for an installment plan. */
 export function amountsBySequence(
   totalAmount: number,
-  firstPaymentAmount: number,
+  firstPaymentAmount: number | null | undefined,
   installmentCount: number
 ): Map<number, number> {
-  const count = Math.max(2, installmentCount);
-  const first = round2(firstPaymentAmount);
-  const recurringCount = count - 1;
-  const remaining = Math.max(0, round2(totalAmount - first));
-  const baseRecurring = round2(remaining / recurringCount);
-  const map = new Map<number, number>();
-  map.set(1, first);
-  let allocated = 0;
-  for (let seq = 2; seq <= count; seq++) {
-    const isLast = seq === count;
-    const amount = isLast ? round2(remaining - allocated) : baseRecurring;
-    allocated = round2(allocated + baseRecurring);
-    map.set(seq, amount);
-  }
-  return map;
+  const amounts = resolveInstallmentAmounts(
+    totalAmount,
+    installmentCount,
+    normalizeDownPayment(firstPaymentAmount)
+  );
+  return new Map(amounts.map((amount, i) => [i + 1, amount]));
+}
+
+/** Monthly amount after the מקדימה (or the even monthly amount). */
+export function recurringFromSplit(
+  totalAmount: number,
+  installmentCount: number,
+  firstPaymentAmount?: number | null
+) {
+  const count = clampInstallmentCount(installmentCount);
+  if (count <= 1) return null;
+  const amounts = resolveInstallmentAmounts(
+    totalAmount,
+    count,
+    firstPaymentAmount
+  );
+  return amounts[1] ?? null;
 }

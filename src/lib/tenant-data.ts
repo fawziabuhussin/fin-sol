@@ -24,6 +24,7 @@ import {
   sumPaidInstallments,
 } from "@/lib/installment-transactions";
 import { contractorBudgetTotal } from "@/lib/project-completion-utils";
+import { masterBudgetFromChildren, topLevelProjectWhere } from "@/lib/project-tree";
 import {
   aggregateExpensesByGroup,
   findUncategorizedExpenses,
@@ -965,7 +966,7 @@ export async function getBuildingProjectSummary(
   masterProjectId: string
 ) {
   const master = await prisma.project.findFirst({
-    where: { id: masterProjectId, userId, kind: ProjectKind.MASTER_BUILD },
+    where: { id: masterProjectId, userId, ...topLevelProjectWhere },
     include: {
       children: {
         include: {
@@ -984,7 +985,6 @@ export async function getBuildingProjectSummary(
 
   if (!master) return null;
 
-  const totalBudget = decimalToNumber(master.totalBudget);
   const childIds = master.children.map((c) => c.id);
   const allProjectIds = [master.id, ...childIds];
 
@@ -997,9 +997,6 @@ export async function getBuildingProjectSummary(
     _sum: { amount: true },
   });
   const paidToDate = decimalToNumber(paidAgg._sum.amount);
-  const remaining = Math.max(0, totalBudget - paidToDate);
-  const percentComplete =
-    totalBudget > 0 ? Math.round((paidToDate / totalBudget) * 100) : 0;
 
   const contractors = master.children.map((child) => {
     const activePlan = child.paymentPlans[0];
@@ -1074,10 +1071,20 @@ export async function getBuildingProjectSummary(
     })
     .sort((a, b) => a.dueDate.localeCompare(b.dueDate));
 
+  const totalBudget = masterBudgetFromChildren(
+    decimalToNumber(master.totalBudget),
+    contractors.map((c) => c.totalBudget)
+  );
+  const remaining = Math.max(0, totalBudget - paidToDate);
+  const percentComplete =
+    totalBudget > 0 ? Math.round((paidToDate / totalBudget) * 100) : 0;
+
   return {
     master: {
       id: master.id,
+      kind: master.kind,
       title: master.title,
+      status: master.status,
       totalBudget,
       paidToDate,
       remaining,
@@ -1098,7 +1105,7 @@ export async function getProjectDetail(userId: string, projectId: string) {
     where: {
       id: projectId,
       userId,
-      kind: { not: ProjectKind.MASTER_BUILD },
+      parentProjectId: { not: null },
     },
     include: {
       parent: { select: { id: true, title: true } },
@@ -1396,7 +1403,7 @@ export async function getLookups(userId: string) {
     prisma.project.findMany({
       where: {
         userId,
-        kind: { in: [ProjectKind.MASTER_BUILD, ProjectKind.GENERAL] },
+        ...topLevelProjectWhere,
       },
       orderBy: { createdAt: "desc" },
     }),
@@ -1409,7 +1416,7 @@ export async function getLookups(userId: string) {
  * Excludes the building category so daily spending stays separate from build.
  */
 export async function getQuickAddLookups(userId: string) {
-  const [categories, paymentMethods] = await Promise.all([
+  const [categories, paymentMethods, projects] = await Promise.all([
     prisma.category.findMany({
       where: {
         userId,
@@ -1425,8 +1432,13 @@ export async function getQuickAddLookups(userId: string) {
       orderBy: { name: "asc" },
       select: { id: true, name: true },
     }),
+    prisma.project.findMany({
+      where: { userId, ...topLevelProjectWhere },
+      orderBy: { createdAt: "desc" },
+      select: { id: true, title: true },
+    }),
   ]);
-  return { categories, paymentMethods };
+  return { categories, paymentMethods, projects };
 }
 
 export async function listEmployers(userId: string) {
@@ -1557,7 +1569,7 @@ export async function getDashboardSummary(userId: string) {
   const projects = await prisma.project.findMany({
     where: {
       userId,
-      kind: { in: [ProjectKind.MASTER_BUILD, ProjectKind.GENERAL] },
+      ...topLevelProjectWhere,
     },
     orderBy: { createdAt: "desc" },
   });
@@ -1675,7 +1687,7 @@ export async function listProjects(params: {
   const skip = (params.page - 1) * params.pageSize;
   const where = {
     userId: params.userId,
-    kind: { in: [ProjectKind.MASTER_BUILD, ProjectKind.GENERAL] },
+    ...topLevelProjectWhere,
     ...(params.q
       ? { title: { contains: params.q, mode: "insensitive" as const } }
       : {}),
