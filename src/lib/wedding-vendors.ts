@@ -163,7 +163,6 @@ export async function seedWeddingVendors(userId: string, masterId: string) {
         recurringAmount: recurringFromSplit(vendor.total, count, down),
         payeeName: vendor.title,
         startDate,
-        categoryId: category?.id ?? null,
         installments: {
           create: schedule.map((s) => ({
             sequence: s.sequence,

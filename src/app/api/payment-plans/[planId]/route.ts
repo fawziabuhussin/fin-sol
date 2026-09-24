@@ -89,9 +89,6 @@ export async function PATCH(
           ...(d.paymentMethodId !== undefined
             ? { paymentMethodId: d.paymentMethodId || null }
             : {}),
-          ...(d.categoryId !== undefined
-            ? { categoryId: d.categoryId || null }
-            : {}),
           ...(d.startDate !== undefined ? { startDate } : {}),
           ...(d.mode !== undefined ? { mode } : {}),
           ...(d.totalAmount !== undefined ? { totalAmount } : {}),

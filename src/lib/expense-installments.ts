@@ -102,7 +102,6 @@ export async function createSplitExpense(
       payeeName: title,
       startDate,
       paymentMethodId: data.paymentMethodId || null,
-      categoryId: data.categoryId || null,
       installments: {
         create: schedule.map((s) => ({
           sequence: s.sequence,
