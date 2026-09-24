@@ -7,6 +7,7 @@ import {
   promoteMasterPaymentPlansToChildren,
 } from "@/lib/project-tree";
 import { seedWeddingVendorsIfEmpty } from "@/lib/wedding-vendors";
+import { ensureDbSchema } from "@/lib/ensure-schema";
 import { BuildingDashboardClient } from "@/components/pages/building-dashboard-client";
 import { ProjectDetailClient } from "@/components/pages/project-detail-client";
 
@@ -27,9 +28,19 @@ export default async function ProjectDetailsPage({
 
   if (!project) notFound();
 
+  await ensureDbSchema();
+
   if (isTopLevelMaster(project)) {
-    await promoteMasterPaymentPlansToChildren(user.id, projectId);
-    await seedWeddingVendorsIfEmpty(user.id, projectId);
+    try {
+      await promoteMasterPaymentPlansToChildren(user.id, projectId);
+    } catch (error) {
+      console.error("[projects] promote payment plans failed", error);
+    }
+    try {
+      await seedWeddingVendorsIfEmpty(user.id, projectId);
+    } catch (error) {
+      console.error("[projects] seed wedding vendors failed", error);
+    }
     const [summary, lookups] = await Promise.all([
       getBuildingProjectSummary(user.id, projectId),
       getLookups(user.id),
