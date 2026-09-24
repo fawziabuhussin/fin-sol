@@ -163,6 +163,11 @@ function ContractorCard({
               <span className="text-sm text-slate-600">
                 {formatCurrency(c.totalBudget)}
               </span>
+              {!isCompleted && (
+                <span className="text-sm font-bold text-amber-700">
+                  متبقي {formatCurrency(c.remaining)}
+                </span>
+              )}
             </>
           )}
           <BuildingPaymentSheet
@@ -241,7 +246,7 @@ export function BuildingDashboardClient({
   const childLabelPlural = isBuild ? "المقاولون" : "البنود";
   const KindIcon = isBuild ? Building2 : FolderKanban;
 
-  const { activeContractors, completedContractors, plannedContractors } =
+  const { activeContractors, completedContractors, plannedContractors, activeRemaining } =
     useMemo(() => {
       const planned = summary.contractors.filter((c) => c.status === "PLANNED");
       const completed = summary.contractors.filter(
@@ -257,6 +262,7 @@ export function BuildingDashboardClient({
         activeContractors: active,
         completedContractors: completed,
         plannedContractors: planned,
+        activeRemaining: active.reduce((sum, c) => sum + c.remaining, 0),
       };
     }, [summary.contractors]);
 
@@ -351,11 +357,17 @@ export function BuildingDashboardClient({
         </div>
       </motion.div>
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         {[
           { label: "الميزانية", value: summary.master.totalBudget, color: "text-slate-900" },
           { label: "المدفوع", value: summary.master.paidToDate, color: "text-emerald-700" },
           { label: "المتبقي", value: summary.master.remaining, color: "text-amber-700" },
+          {
+            label: "المتبقي من النشط",
+            value: activeRemaining,
+            color: "text-orange-600",
+            hint: "قيد التنفيذ فقط — بدون المخطط للمستقبل",
+          },
           { label: "نسبة الإنجاز", value: `${summary.master.percentComplete}%`, color: "text-indigo-700" },
         ].map((kpi, i) => (
           <motion.div
@@ -370,6 +382,9 @@ export function BuildingDashboardClient({
                 <p className={`text-2xl font-extrabold ${kpi.color}`}>
                   {typeof kpi.value === "number" ? formatCurrency(kpi.value) : kpi.value}
                 </p>
+                {"hint" in kpi && kpi.hint ? (
+                  <p className="mt-1 text-[11px] leading-snug text-slate-400">{kpi.hint}</p>
+                ) : null}
               </CardContent>
             </Card>
           </motion.div>
@@ -454,6 +469,11 @@ export function BuildingDashboardClient({
             <CardTitle className="flex items-center gap-2">
               <Calendar className="h-5 w-5" />
               الدفعات القادمة (قيد التنفيذ فقط)
+              <span className="ms-auto text-base font-extrabold text-amber-700">
+                {formatCurrency(
+                  summary.upcomingInstallments.reduce((sum, i) => sum + i.amount, 0)
+                )}
+              </span>
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
@@ -489,6 +509,9 @@ export function BuildingDashboardClient({
             <CardTitle className="flex items-center gap-2">
               {isBuild ? <Hammer className="h-5 w-5" /> : <FolderKanban className="h-5 w-5" />}
               قيد التنفيذ ({activeContractors.length})
+              <span className="ms-auto text-base font-extrabold text-amber-700">
+                متبقي {formatCurrency(activeRemaining)}
+              </span>
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
