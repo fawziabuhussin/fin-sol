@@ -30,6 +30,7 @@ model User {
   payees          Payee[]
   paymentMethods  PaymentMethod[]
   paymentPlans    ProjectPaymentPlan[]
+  splitPlans      SplitPaymentPlan[]
   subscriptions   Subscription[]
 }
 
@@ -142,6 +143,7 @@ model Transaction {
   paymentMethod  PaymentMethod?       @relation(fields: [paymentMethodId], references: [id], onDelete: SetNull)
   salarySlip     SalarySlip?          @relation(fields: [salarySlipId], references: [id], onDelete: Cascade)
   installment           ProjectInstallment?
+  splitInstallment      SplitPaymentInstallment?
   savingsEntry          SavingsEntry?
   savingsAssetEntry     SavingsAssetEntry?
   savingsAssetEntryFee  SavingsAssetEntry? @relation("SavingsAssetEntryFee")
@@ -168,9 +170,10 @@ model Category {
   isActive  Boolean      @default(true)
   sortOrder Int          @default(0)
 
-  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user          User               @relation(fields: [userId], references: [id], onDelete: Cascade)
   transactions  Transaction[]
   subscriptions Subscription[]
+  splitPlans    SplitPaymentPlan[]
 
   @@unique([userId, name, kind])
   @@index([userId, kind, isActive])
@@ -197,6 +200,7 @@ model PaymentMethod {
   user         User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
   transactions  Transaction[]
   paymentPlans  ProjectPaymentPlan[]
+  splitPlans    SplitPaymentPlan[]
   subscriptions Subscription[]
 
   @@unique([userId, name])
@@ -474,6 +478,51 @@ model ProjectInstallment {
 
   plan        ProjectPaymentPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
   transaction Transaction?       @relation(fields: [transactionId], references: [id], onDelete: SetNull)
+
+  @@unique([planId, sequence])
+  @@index([planId, status])
+  @@index([dueDate, status])
+}
+
+/** Daily credit-card / Quick Add splits — not projects. */
+model SplitPaymentPlan {
+  id                 String   @id @default(cuid())
+  userId             String
+  title              String
+  totalAmount        Decimal  @db.Decimal(14, 2)
+  installmentCount   Int
+  firstPaymentAmount Decimal? @db.Decimal(14, 2)
+  recurringAmount    Decimal? @db.Decimal(14, 2)
+  categoryId         String?
+  paymentMethodId    String?
+  startDate          DateTime @db.Date
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  user          User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category      Category?                  @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  paymentMethod PaymentMethod?             @relation(fields: [paymentMethodId], references: [id], onDelete: SetNull)
+  installments  SplitPaymentInstallment[]
+
+  @@index([userId])
+  @@index([userId, startDate])
+}
+
+model SplitPaymentInstallment {
+  id            String            @id @default(cuid())
+  planId        String
+  sequence      Int
+  label         String?
+  dueDate       DateTime          @db.Date
+  amount        Decimal           @db.Decimal(14, 2)
+  status        InstallmentStatus @default(PENDING)
+  notes         String?
+  transactionId String?           @unique
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  plan        SplitPaymentPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  transaction Transaction?     @relation(fields: [transactionId], references: [id], onDelete: SetNull)
 
   @@unique([planId, sequence])
   @@index([planId, status])

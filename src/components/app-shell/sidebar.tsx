@@ -15,12 +15,14 @@ import {
   Presentation,
   PanelRightClose,
   PanelRightOpen,
+  CreditCard,
 } from "lucide-react";
 
 const items = [
   { href: "/dashboard", label: "لوحة التحكم", icon: LayoutDashboard },
   { href: "/transactions", label: "المعاملات", icon: ArrowRightLeft },
   { href: "/subscriptions", label: "الاشتراكات", icon: Repeat },
+  { href: "/splits", label: "الأقساط", icon: CreditCard },
   { href: "/projects", label: "المشاريع", icon: FolderKanban },
   { href: "/savings", label: "الجمعية والادخار", icon: PiggyBank },
   { href: "/salary", label: "متابعة الراتب", icon: WalletCards },

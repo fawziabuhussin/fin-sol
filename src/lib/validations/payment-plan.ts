@@ -65,7 +65,6 @@ export const expenseInstallmentSchema = z.object({
   payDownPaymentNow: z.boolean().optional(),
   categoryId: z.string().optional().nullable(),
   paymentMethodId: z.string().optional().nullable(),
-  parentProjectId: z.string().optional().nullable().or(z.literal("")),
 });
 
 export type ExpenseInstallmentInput = z.infer<typeof expenseInstallmentSchema>;

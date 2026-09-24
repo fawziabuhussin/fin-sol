@@ -13,6 +13,7 @@ export const authConfig = {
         path.startsWith("/dashboard") ||
         path.startsWith("/transactions") ||
         path.startsWith("/projects") ||
+        path.startsWith("/splits") ||
         path.startsWith("/savings") ||
         path.startsWith("/salary") ||
         path.startsWith("/settings") ||
@@ -20,6 +21,8 @@ export const authConfig = {
         path.startsWith("/api/transactions") ||
         path.startsWith("/api/projects") ||
         path.startsWith("/api/quick-add") ||
+        path.startsWith("/api/split-plans") ||
+        path.startsWith("/api/split-installments") ||
         path.startsWith("/api/savings") ||
         path.startsWith("/api/salary");
       const isAuthPage =
