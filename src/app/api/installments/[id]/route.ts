@@ -7,7 +7,6 @@ import {
   syncLinkedInstallmentTransaction,
   categoryIdForInstallmentPlan,
 } from "@/lib/installment-transactions";
-import { ensureBuildCategoryId } from "@/lib/build-category";
 import { installmentEditSchema } from "@/lib/validations/payment-plan";
 import { InstallmentStatus, TransactionType } from "@/generated/prisma/client";
 import type { Prisma } from "@/generated/prisma/client";
@@ -46,10 +45,7 @@ export async function PATCH(
     const wasPaid = installment.status === InstallmentStatus.PAID;
 
     if (body.paid === true && !wasPaid) {
-      const categoryId = await categoryIdForInstallmentPlan(
-        user.id,
-        installment.plan.categoryId
-      );
+      const categoryId = await categoryIdForInstallmentPlan(user.id);
       const occurredAt = body.occurredAt
         ? new Date(body.occurredAt)
         : newDueDate;

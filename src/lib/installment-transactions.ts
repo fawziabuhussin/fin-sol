@@ -31,7 +31,6 @@ type InstallmentWithPlan = {
     projectId: string;
     payeeName: string | null;
     paymentMethodId: string | null;
-    categoryId?: string | null;
     project: { title: string };
   };
 };
@@ -63,7 +62,7 @@ export async function markInstallmentPaid(params: {
 
   const categoryId = await categoryIdForInstallmentPlan(
     params.userId,
-    params.categoryId ?? installment.plan.categoryId
+    params.categoryId
   );
   const occurredAt = params.occurredAt ?? installment.dueDate;
   const label = installment.label ?? `قسط ${installment.sequence}`;

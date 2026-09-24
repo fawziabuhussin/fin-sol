@@ -796,9 +796,14 @@ export async function getAnnualShowcaseData(userId: string, year: number) {
   const highestExpenseMonth =
     [...monthly].sort((a, b) => b.expenses - a.expenses)[0] ?? null;
 
-  const building = masterBuild
-    ? await getBuildingProjectSummary(userId, masterBuild.id)
-    : null;
+  let building = null;
+  if (masterBuild) {
+    try {
+      building = await getBuildingProjectSummary(userId, masterBuild.id);
+    } catch (error) {
+      console.error("[dashboard] building summary failed", error);
+    }
+  }
 
   const yearSalarySlips = salarySlips.filter(
     (s) => s.periodYear === year && s.paid && s.worked

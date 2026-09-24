@@ -93,7 +93,6 @@ export async function POST(
         payeeName: data.payeeName || null,
         startDate: startDate,
         paymentMethodId: data.paymentMethodId || null,
-        categoryId: data.categoryId || null,
         installments: {
           create: schedule.map((s) => ({
             sequence: s.sequence,
