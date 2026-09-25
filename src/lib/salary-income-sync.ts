@@ -4,8 +4,13 @@ import {
   TransactionType,
 } from "@/generated/prisma/client";
 import { prisma as defaultPrisma } from "@/lib/db";
-import { incomeDateFromSalaryPeriod, monthRangeUTC } from "@/lib/dates";
+import {
+  incomeDateFromPaidAt,
+  incomeDateFromSalaryPeriod,
+  monthRangeUTC,
+} from "@/lib/dates";
 import { decimalToNumber } from "@/lib/utils";
+import { isJamaShoglEmployer } from "@/lib/jama-shogl-payslip";
 
 export function slipEffectiveNet(slip: {
   net: { toString(): string };
@@ -88,7 +93,11 @@ export async function syncSalarySlipIncome(
     where: { salarySlipId: slipId },
   });
 
-  if (!slip.worked) {
+  const isBgu = isJamaShoglEmployer(slip.employer.name);
+
+  // BGU pays the following month — don't count uncollected placeholders
+  // (e.g. September ₪1,819) on the dashboard.
+  if (!slip.worked || (isBgu && !slip.paid)) {
     if (existing) {
       await db.transaction.delete({ where: { id: existing.id } });
     }
@@ -105,7 +114,10 @@ export async function syncSalarySlipIncome(
 
   const incomeCat = await ensureIncomeCategory(slip.userId, db);
   const payee = await ensurePayee(slip.userId, slip.employer.name, db);
-  const occurredAt = incomeDateFromSalaryPeriod(slip.periodYear, slip.periodMonth);
+  const occurredAt =
+    isBgu && slip.paidAt
+      ? incomeDateFromPaidAt(slip.paidAt, slip.periodYear, slip.periodMonth)
+      : incomeDateFromSalaryPeriod(slip.periodYear, slip.periodMonth);
 
   const data = {
     userId: slip.userId,

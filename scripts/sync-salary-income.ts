@@ -1,5 +1,6 @@
 /**
- * Re-sync all salary slips → income transactions (next-month rule).
+ * Re-sync all salary slips → income transactions.
+ * جامعة شغل uses paidAt (bank credit month); other employers use the work month.
  * Usage: npx tsx scripts/sync-salary-income.ts [userEmail]
  */
 import "dotenv/config";

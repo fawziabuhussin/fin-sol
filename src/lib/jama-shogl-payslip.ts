@@ -15,7 +15,7 @@ export function isJamaShoglEmployer(name: string) {
   );
 }
 
-/** Net salary from Excel summary (months without full תלוש on file). */
+/** Net salary from Excel summary / תלוש (months without a dedicated payload). */
 const NET_BY_MONTH: Record<number, number> = {
   1: 4119.09,
   2: 3194.47,
@@ -23,7 +23,8 @@ const NET_BY_MONTH: Record<number, number> = {
   4: 1819.12,
   5: 1819.12,
   6: 2039.25,
-  7: 2039.25,
+  7: 6592.21,
+  8: 3594.66,
 };
 
 /** Jan–Mar 2026 — תלוש גבוה (אלטשולר + הפניקס השתלמות) */
@@ -154,6 +155,113 @@ const JUN_2026_BREAKDOWN: SalarySlipBreakdown = {
   otherDeductions: 17.57,
 };
 
+/** Jul 2026 — 7-2026.pdf (paid 02/08, includes June retro קופות) */
+const JUL_2026_BREAKDOWN: SalarySlipBreakdown = {
+  taxes: {
+    nationalInsurance: 593,
+    healthInsurance: 439,
+    incomeTax: 168,
+    total: 1200,
+  },
+  pension: {
+    employee: 541.84,
+    employer: 580.54,
+    severanceEmployer: 644.79,
+    lines: [
+      {
+        fund: "347",
+        type: "קצבה שכיר-תג. 06/26",
+        employee: 204.41,
+        employer: 219.01,
+        base: 2920.14,
+      },
+      {
+        fund: "347",
+        type: "קצבה שכיר-תג.",
+        employee: 337.43,
+        employer: 361.53,
+        base: 4820.44,
+      },
+      {
+        fund: "347",
+        type: "פיצויים 06/26",
+        employee: 0,
+        employer: 243.25,
+        base: 2920.14,
+      },
+      {
+        fund: "347",
+        type: "פיצויים",
+        employee: 0,
+        employer: 401.54,
+        base: 4820.44,
+      },
+      {
+        fund: "458",
+        type: "קרן השתלמות 06/26",
+        employee: 72.16,
+        employer: 216.49,
+        base: 2886.48,
+      },
+      {
+        fund: "458",
+        type: "קרן השתלמות",
+        employee: 119.12,
+        employer: 357.36,
+        base: 4764.77,
+      },
+    ],
+  },
+  keren: {
+    employee: 191.28,
+    employer: 573.85,
+  },
+  otherDeductions: 80.92,
+};
+
+/** Aug 2026 — 8-2026.pdf (paid early September) */
+const AUG_2026_BREAKDOWN: SalarySlipBreakdown = {
+  taxes: {
+    nationalInsurance: 334,
+    healthInsurance: 246,
+    incomeTax: 95,
+    total: 675,
+  },
+  pension: {
+    employee: 337.43,
+    employer: 361.53,
+    severanceEmployer: 401.54,
+    lines: [
+      {
+        fund: "347",
+        type: "קצבה שכיר-תג.",
+        employee: 337.43,
+        employer: 361.53,
+        base: 4820.44,
+      },
+      {
+        fund: "347",
+        type: "פיצויים",
+        employee: 0,
+        employer: 401.54,
+        base: 4820.44,
+      },
+      {
+        fund: "458",
+        type: "קרן השתלמות",
+        employee: 119.12,
+        employer: 357.36,
+        base: 4764.77,
+      },
+    ],
+  },
+  keren: {
+    employee: 119.12,
+    employer: 357.36,
+  },
+  otherDeductions: 38.56,
+};
+
 export type JamaShoglSlipPayload = {
   gross: number;
   net: number;
@@ -164,6 +272,42 @@ export type JamaShoglSlipPayload = {
   bonus: number;
   slipBreakdown: SalarySlipBreakdown;
   notes: string;
+};
+
+const JUN_2026_SLIP: JamaShoglSlipPayload = {
+  gross: 2638.84,
+  net: 2039.25,
+  tax: 374,
+  pension: 164.73,
+  kerenHishtalmut: 54.27,
+  fees: 17.57,
+  bonus: 0,
+  slipBreakdown: JUN_2026_BREAKDOWN,
+  notes: "תלוש בן גוריון — יוני 2026 (6-2026.pdf)",
+};
+
+const JUL_2026_SLIP: JamaShoglSlipPayload = {
+  gross: 8606.25,
+  net: 6592.21,
+  tax: 1200,
+  pension: 541.84,
+  kerenHishtalmut: 191.28,
+  fees: 80.92,
+  bonus: 0,
+  slipBreakdown: JUL_2026_BREAKDOWN,
+  notes: "תלוש בן גוריון — יולי 2026 (7-2026.pdf)",
+};
+
+const AUG_2026_SLIP: JamaShoglSlipPayload = {
+  gross: 4764.77,
+  net: 3594.66,
+  tax: 675,
+  pension: 337.43,
+  kerenHishtalmut: 119.12,
+  fees: 38.56,
+  bonus: 0,
+  slipBreakdown: AUG_2026_BREAKDOWN,
+  notes: "תלוש בן גוריון — אוגוסט 2026 (8-2026.pdf)",
 };
 
 function buildHighSlip(month: number): JamaShoglSlipPayload {
@@ -196,20 +340,9 @@ function buildHighSlip(month: number): JamaShoglSlipPayload {
 }
 
 function buildLowSlip(month: number): JamaShoglSlipPayload {
-  if (month >= 6) {
-    const net = NET_BY_MONTH[month] ?? 2039.25;
-    return {
-      gross: 2638.84,
-      net,
-      tax: 374,
-      pension: 164.73,
-      kerenHishtalmut: 54.27,
-      fees: 17.57,
-      bonus: 0,
-      slipBreakdown: JUN_2026_BREAKDOWN,
-      notes: `תלוש בן גוריון — חודש ${month}/2026 (ת. דיפרנציאלית)`,
-    };
-  }
+  if (month === 6) return JUN_2026_SLIP;
+  if (month === 7) return JUL_2026_SLIP;
+  if (month === 8) return AUG_2026_SLIP;
   return {
     gross: 2346.3,
     net: NET_BY_MONTH[month] ?? 1819.12,
