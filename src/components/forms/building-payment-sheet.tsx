@@ -17,6 +17,7 @@ import { Select } from "@/components/ui/select";
 import { type PaymentPlanInput } from "@/lib/validations/payment-plan";
 import {
   DOWN_PAYMENT_LABEL,
+  MAX_INSTALLMENT_COUNT,
   recurringFromSplit,
 } from "@/lib/payment-plan";
 import { formatCurrency } from "@/lib/utils";
@@ -226,12 +227,12 @@ export function BuildingPaymentSheet({
           {mode === "INSTALLMENTS" && (
             <>
               <div>
-                <Label>عدد الأقساط الشهرية (1–24)</Label>
+                <Label>عدد الأقساط الشهرية (1–{MAX_INSTALLMENT_COUNT})</Label>
                 <Select
                   value={String(installmentCount)}
                   onChange={(e) => setInstallmentCount(Number(e.target.value))}
                 >
-                  {Array.from({ length: 24 }, (_, i) => i + 1).map((n) => (
+                  {Array.from({ length: MAX_INSTALLMENT_COUNT }, (_, i) => i + 1).map((n) => (
                     <option key={n} value={n}>
                       {n === 1 ? "شهر واحد" : `${n} أشهر`}
                     </option>
