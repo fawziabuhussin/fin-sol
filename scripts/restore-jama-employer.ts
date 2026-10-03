@@ -8,6 +8,7 @@ import { Pool } from "pg";
 import { PrismaClient } from "../src/generated/prisma/client";
 import { syncSalarySlipIncome } from "../src/lib/salary-income-sync";
 import type { SalarySlipBreakdown } from "../src/lib/payslip-types";
+import { officialJamaShoglSlipFromPdf } from "../src/lib/jama-shogl-payslip";
 
 const userEmail = process.env.IMPORT_USER_EMAIL || "foze820@gmail.com";
 const year = 2026;
@@ -110,11 +111,16 @@ async function main() {
   }
 
   for (let periodMonth = 1; periodMonth <= 12; periodMonth++) {
-    const useBgu = BGU_MONTHS.has(periodMonth);
-    const net = useBgu ? bguSlip.net : EXCEL_NET_BY_MONTH[periodMonth];
+    const official = officialJamaShoglSlipFromPdf(year, periodMonth);
+    const useBgu = Boolean(official) || BGU_MONTHS.has(periodMonth);
+    const net = official
+      ? official.net
+      : useBgu
+        ? bguSlip.net
+        : EXCEL_NET_BY_MONTH[periodMonth];
     if (net <= 0) continue;
 
-    const paid = periodMonth <= 5;
+    const paid = periodMonth <= 5 || periodMonth === 9;
 
     const row = await prisma.salarySlip.upsert({
       where: {
@@ -133,32 +139,57 @@ async function main() {
         worked: true,
         paid,
         paidAt: paid
-          ? new Date(`${year}-${String(periodMonth).padStart(2, "0")}-28`)
+          ? new Date(
+              periodMonth === 9
+                ? "2026-10-03"
+                : `${year}-${String(periodMonth).padStart(2, "0")}-28`
+            )
           : null,
-        gross: useBgu ? bguSlip.gross : net,
-        net: useBgu ? bguSlip.net : net,
-        tax: useBgu ? bguSlip.tax : 0,
-        pension: useBgu ? bguSlip.pension : 0,
-        kerenHishtalmut: useBgu ? bguSlip.kerenHishtalmut : 0,
-        fees: useBgu ? bguSlip.fees : 0,
-        bonus: 0,
-        slipBreakdown: useBgu ? bguSlip.breakdown : undefined,
-        notes: useBgu ? "תלוש בן גוריון — ייבוא אפר–יונ 2026" : null,
+        gross: official ? official.gross : useBgu ? bguSlip.gross : net,
+        net: official ? official.net : useBgu ? bguSlip.net : net,
+        tax: official ? official.tax : useBgu ? bguSlip.tax : 0,
+        pension: official ? official.pension : useBgu ? bguSlip.pension : 0,
+        kerenHishtalmut: official
+          ? official.kerenHishtalmut
+          : useBgu
+            ? bguSlip.kerenHishtalmut
+            : 0,
+        fees: official ? official.fees : useBgu ? bguSlip.fees : 0,
+        bonus: official ? official.bonus : 0,
+        slipBreakdown: official
+          ? official.slipBreakdown
+          : useBgu
+            ? bguSlip.breakdown
+            : undefined,
+        notes: official
+          ? official.notes
+          : useBgu
+            ? "תלוש בן גוריון — ייבוא אפר–יונ 2026"
+            : null,
       },
       update: {
         worked: true,
-        gross: useBgu ? bguSlip.gross : net,
-        net: useBgu ? bguSlip.net : net,
-        tax: useBgu ? bguSlip.tax : 0,
-        pension: useBgu ? bguSlip.pension : 0,
-        kerenHishtalmut: useBgu ? bguSlip.kerenHishtalmut : 0,
-        fees: useBgu ? bguSlip.fees : 0,
-        slipBreakdown: useBgu ? bguSlip.breakdown : undefined,
+        gross: official ? official.gross : useBgu ? bguSlip.gross : net,
+        net: official ? official.net : useBgu ? bguSlip.net : net,
+        tax: official ? official.tax : useBgu ? bguSlip.tax : 0,
+        pension: official ? official.pension : useBgu ? bguSlip.pension : 0,
+        kerenHishtalmut: official
+          ? official.kerenHishtalmut
+          : useBgu
+            ? bguSlip.kerenHishtalmut
+            : 0,
+        fees: official ? official.fees : useBgu ? bguSlip.fees : 0,
+        slipBreakdown: official
+          ? official.slipBreakdown
+          : useBgu
+            ? bguSlip.breakdown
+            : undefined,
+        notes: official ? official.notes : undefined,
       },
     });
     await syncSalarySlipIncome(row.id);
     console.log(
-      `  ${year}-${String(periodMonth).padStart(2, "0")}: net ₪${net}${useBgu ? " (BGU תלוש)" : ""}`
+      `  ${year}-${String(periodMonth).padStart(2, "0")}: net ₪${net}${official ? " (BGU PDF)" : useBgu ? " (BGU תלוש)" : ""}`
     );
   }
 

@@ -22,6 +22,7 @@ export async function POST(req: Request) {
       tax: parsed.tax,
       pension: parsed.pension,
       kerenHishtalmut: parsed.kerenHishtalmut,
+      fees: parsed.fees,
       periodYear: parsed.periodYear,
       periodMonth: parsed.periodMonth,
       breakdown: parsed.breakdown,

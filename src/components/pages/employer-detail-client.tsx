@@ -272,6 +272,7 @@ export function EmployerDetailClient({ detail }: { detail: EmployerDetail }) {
         tax: data.tax ?? f.tax,
         pension: data.pension ?? f.pension,
         kerenHishtalmut: data.kerenHishtalmut ?? f.kerenHishtalmut,
+        fees: data.fees ?? f.fees,
         slipBreakdown: data.breakdown ?? null,
       }));
       toast.success(

@@ -30,6 +30,26 @@ const slipBreakdownSchema = z
       employer: z.number(),
     }),
     otherDeductions: z.number().optional(),
+    payments: z
+      .array(
+        z.object({
+          code: z.string().optional(),
+          description: z.string(),
+          period: z.string().optional(),
+          amount: z.number(),
+        })
+      )
+      .optional(),
+    extraDeductions: z
+      .array(
+        z.object({
+          code: z.string().optional(),
+          description: z.string(),
+          period: z.string().optional(),
+          amount: z.number(),
+        })
+      )
+      .optional(),
   })
   .optional();
 

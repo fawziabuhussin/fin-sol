@@ -12,6 +12,7 @@ import { monthRangeUTC, utcMonth, yearRangeUTC } from "@/lib/dates";
 import { INCOME_SOURCES, monthLabel } from "@/lib/finance-labels";
 import { paidAtForPeriod } from "@/lib/savings-schedule";
 import type { SalarySlipBreakdown } from "@/lib/payslip-types";
+import { applyOfficialJamaShoglIfStale } from "@/lib/jama-shogl-payslip";
 import { getMarketRates } from "@/lib/market-rates";
 import { computeAssetValueIls } from "@/lib/savings-asset-value";
 import { isAssetPurchaseDescription } from "@/lib/savings-contribution";
@@ -1323,11 +1324,35 @@ export async function getEmployerKupot(userId: string) {
   });
 
   return employers.map((emp) => {
-    const slipAmounts = emp.salarySlips.map((s) => kupotAmountsFromSlip(s));
+    const hydratedSlips = emp.salarySlips.map((s) => {
+      const hydrated = applyOfficialJamaShoglIfStale(
+        emp.name,
+        s.periodYear,
+        s.periodMonth,
+        {
+          gross: decimalToNumber(s.gross),
+          net: decimalToNumber(s.net),
+          tax: decimalToNumber(s.tax),
+          pension: decimalToNumber(s.pension),
+          kerenHishtalmut: decimalToNumber(s.kerenHishtalmut),
+          fees: decimalToNumber(s.fees),
+          bonus: decimalToNumber(s.bonus),
+          notes: s.notes,
+          slipBreakdown: s.slipBreakdown as SalarySlipBreakdown | null,
+        }
+      );
+      return {
+        ...s,
+        pension: hydrated.pension,
+        kerenHishtalmut: hydrated.kerenHishtalmut,
+        slipBreakdown: hydrated.slipBreakdown,
+      };
+    });
+    const slipAmounts = hydratedSlips.map((s) => kupotAmountsFromSlip(s));
     const totals = sumKupotAmounts(slipAmounts);
-    const latest = emp.salarySlips[emp.salarySlips.length - 1];
+    const latest = hydratedSlips[hydratedSlips.length - 1];
     const latestAmounts = latest ? kupotAmountsFromSlip(latest) : null;
-    const monthlyHistory = emp.salarySlips
+    const monthlyHistory = hydratedSlips
       .filter((s) => kupotAmountsFromSlip(s).total > 0)
       .map((s) => {
         const amounts = kupotAmountsFromSlip(s);
@@ -1514,10 +1539,20 @@ export async function getEmployerDetail(
         slipBreakdown: null as SalarySlipBreakdown | null,
       };
     }
-    const net = decimalToNumber(slip.net);
-    const fees = decimalToNumber(slip.fees);
-    const bonus = decimalToNumber(slip.bonus);
-    const breakdown = slip.slipBreakdown as SalarySlipBreakdown | null;
+    const hydrated = applyOfficialJamaShoglIfStale(employer.name, year, month, {
+      gross: decimalToNumber(slip.gross),
+      net: decimalToNumber(slip.net),
+      tax: decimalToNumber(slip.tax),
+      pension: decimalToNumber(slip.pension),
+      kerenHishtalmut: decimalToNumber(slip.kerenHishtalmut),
+      fees: decimalToNumber(slip.fees),
+      bonus: decimalToNumber(slip.bonus),
+      notes: slip.notes,
+      slipBreakdown: slip.slipBreakdown as SalarySlipBreakdown | null,
+    });
+    const net = hydrated.net;
+    const fees = hydrated.fees;
+    const bonus = hydrated.bonus;
     return {
       month,
       label: monthLabel(month),
@@ -1526,16 +1561,16 @@ export async function getEmployerDetail(
       worked: slip.worked,
       paid: slip.paid,
       paidAt: slip.paidAt?.toISOString().slice(0, 10) ?? null,
-      gross: decimalToNumber(slip.gross),
+      gross: hydrated.gross,
       net,
-      tax: decimalToNumber(slip.tax),
-      pension: decimalToNumber(slip.pension),
-      kerenHishtalmut: decimalToNumber(slip.kerenHishtalmut),
+      tax: hydrated.tax,
+      pension: hydrated.pension,
+      kerenHishtalmut: hydrated.kerenHishtalmut,
       fees,
       bonus,
-      effectiveNet: slip.worked ? net + bonus - fees : 0,
-      notes: slip.notes,
-      slipBreakdown: breakdown,
+      effectiveNet: slip.worked ? net + bonus : 0,
+      notes: hydrated.notes,
+      slipBreakdown: hydrated.slipBreakdown ?? null,
     };
   });
 
