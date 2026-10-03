@@ -13,6 +13,7 @@ import { INCOME_SOURCES, monthLabel } from "@/lib/finance-labels";
 import { paidAtForPeriod } from "@/lib/savings-schedule";
 import type { SalarySlipBreakdown } from "@/lib/payslip-types";
 import { applyOfficialJamaShoglIfStale } from "@/lib/jama-shogl-payslip";
+import { persistOfficialJamaShoglSlips } from "@/lib/jama-shogl-repair";
 import { getMarketRates } from "@/lib/market-rates";
 import { computeAssetValueIls } from "@/lib/savings-asset-value";
 import { isAssetPurchaseDescription } from "@/lib/savings-contribution";
@@ -239,6 +240,7 @@ export async function getMonthlyOverview(
   year: number,
   month: number
 ) {
+  await persistOfficialJamaShoglSlips(userId, year);
   const { start, end } = monthRangeUTC(year, month);
 
   const [transactions, salarySlips, savingsPlans, savingsEntriesPaid, assetEntries] =
@@ -1491,6 +1493,8 @@ export async function getEmployerDetail(
   employerId: string,
   year: number
 ) {
+  await persistOfficialJamaShoglSlips(userId, year);
+
   const employer = await prisma.employer.findFirst({
     where: { id: employerId, userId },
     include: {
@@ -1641,6 +1645,9 @@ export async function listTransactions(params: {
   paymentMethodId?: string;
 }) {
   const skip = (params.page - 1) * params.pageSize;
+  if (params.year) {
+    await persistOfficialJamaShoglSlips(params.userId, params.year);
+  }
 
   let dateFilter = {};
   if (params.year && params.month) {
