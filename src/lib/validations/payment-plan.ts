@@ -1,12 +1,22 @@
 import { z } from "zod";
-import { recurringFromSplit } from "@/lib/payment-plan";
+import {
+  MAX_INSTALLMENT_COUNT,
+  MIN_INSTALLMENT_COUNT,
+  recurringFromSplit,
+} from "@/lib/payment-plan";
+
+const projectInstallmentCountSchema = z.coerce
+  .number()
+  .int()
+  .min(MIN_INSTALLMENT_COUNT)
+  .max(MAX_INSTALLMENT_COUNT);
 
 export const paymentPlanSchema = z
   .object({
     title: z.string().max(120).optional().or(z.literal("")),
     mode: z.enum(["FULL", "INSTALLMENTS"]),
     totalAmount: z.coerce.number().positive(),
-    installmentCount: z.coerce.number().int().min(1).max(24).optional(),
+    installmentCount: projectInstallmentCountSchema.optional(),
     firstPaymentAmount: z.coerce.number().min(0).optional(),
     payeeName: z.string().max(120).optional().or(z.literal("")),
     paymentMethodId: z.string().optional().or(z.literal("")),
@@ -19,7 +29,7 @@ export const paymentPlanSchema = z
       if (!data.installmentCount || data.installmentCount < 1) {
         ctx.addIssue({
           code: "custom",
-          message: "عدد الأقساط مطلوب (1–24)",
+          message: `عدد الأقساط مطلوب (1–${MAX_INSTALLMENT_COUNT})`,
           path: ["installmentCount"],
         });
       }
@@ -52,7 +62,7 @@ export const planEditSchema = z.object({
   startDate: z.string().optional(),
   mode: z.enum(["FULL", "INSTALLMENTS"]).optional(),
   totalAmount: z.coerce.number().positive().optional(),
-  installmentCount: z.coerce.number().int().min(1).max(24).optional(),
+  installmentCount: projectInstallmentCountSchema.optional(),
   firstPaymentAmount: z.coerce.number().min(0).optional(),
 });
 

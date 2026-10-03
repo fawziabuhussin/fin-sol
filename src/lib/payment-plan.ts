@@ -23,9 +23,12 @@ export function installmentLabel(sequence: number): string {
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
+export const MIN_INSTALLMENT_COUNT = 1;
+export const MAX_INSTALLMENT_COUNT = 100;
+
 export function clampInstallmentCount(count?: number) {
   const n = Math.trunc(count ?? 1);
-  return Math.min(24, Math.max(1, n));
+  return Math.min(MAX_INSTALLMENT_COUNT, Math.max(MIN_INSTALLMENT_COUNT, n));
 }
 
 /** Treat 0 / empty as “no מקדימה” so the total is split evenly. */
@@ -35,7 +38,7 @@ export function normalizeDownPayment(amount?: number | null) {
 }
 
 /**
- * Split `totalAmount` into `installmentCount` (1–24) monthly amounts.
+ * Split `totalAmount` into `installmentCount` (1–100) monthly amounts.
  * If `firstPaymentAmount` is set, that is the מקדימה / مقدّمة and the rest
  * is split across the remaining months. Otherwise every month is even.
  */
