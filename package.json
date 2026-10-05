@@ -18,6 +18,7 @@
     "import:isracard-feb": "tsx scripts/import-isracard-feb-2026.ts",
     "import:isracard-jan": "tsx scripts/import-isracard-jan-2026.ts",
     "reconcile:isracard-may-jul": "tsx scripts/reconcile-isracard-may-jul-2026.ts",
+    "reconcile:poalim-jun-aug": "node scripts/reconcile-poalim-jun-aug-2026.js",
     "recategorize:smart": "tsx scripts/smart-recategorize-expenses.ts",
     "seed:categories": "tsx scripts/seed-expense-categories.ts",
     "recategorize:isracard": "tsx scripts/recategorize-isracard.ts",
