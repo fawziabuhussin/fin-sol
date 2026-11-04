@@ -26,10 +26,11 @@ const NET_BY_MONTH: Record<number, number> = {
   7: 2039.25,
   9: 3594,
   10: 4079.88,
+  11: 2673.35,
 };
 
-/** Pay-month slots with a real BGU PDF (8-2026 → Sept, 9-2026 → Oct). */
-const OFFICIAL_PDF_MONTHS_2026 = new Set([4, 5, 6, 9, 10]);
+/** Pay-month slots with a real BGU PDF (8-2026 → Sept pay, 9-2026 → Oct pay, 10-2026 → Nov pay). */
+const OFFICIAL_PDF_MONTHS_2026 = new Set([4, 5, 6, 9, 10, 11]);
 
 /** Jan–Mar 2026 — תלוש גבוה (אלטשולר + הפניקס השתלמות) */
 const HIGH_KUPOT_BREAKDOWN: SalarySlipBreakdown = {
@@ -322,6 +323,66 @@ const SEP_2026_BREAKDOWN: SalarySlipBreakdown = {
   ],
 };
 
+/** October 2026 work (PaySlip2026-10.pdf) — paid in November, 50% משרה */
+const OCT_2026_BREAKDOWN: SalarySlipBreakdown = {
+  taxes: {
+    nationalInsurance: 226,
+    healthInsurance: 306,
+    incomeTax: 872,
+    total: 1404,
+  },
+  pension: {
+    employee: 254.9,
+    employer: 576.45,
+    severanceEmployer: 303.34,
+    lines: [
+      {
+        fund: "347",
+        type: "קצבה שכיר-תג.",
+        employee: 254.9,
+        employer: 273.11,
+        base: 3641.48,
+      },
+      {
+        fund: "347",
+        type: "פיצויים",
+        employee: 0,
+        employer: 303.34,
+        base: 3641.48,
+      },
+      {
+        fund: "458",
+        type: "קרן השתלמות",
+        employee: 89.98,
+        employer: 269.95,
+        base: 3599.36,
+      },
+    ],
+  },
+  keren: {
+    employee: 89.98,
+    employer: 269.95,
+  },
+  otherDeductions: 57.13,
+  payments: [
+    { code: "001", description: "שכר משולב", amount: 2542.22 },
+    { code: "034", description: "תוספות שכר", amount: 622.34 },
+    { code: "1037", description: "תוספת 8% הוראה", amount: 259.98 },
+    { code: "046", description: "הבראה חדשית", amount: 131.69 },
+    { code: "1079", description: "ת. שקלית 2025", amount: 85.25 },
+    { code: "055", description: "קצובת נסיעה", amount: 640 },
+    { code: "056", description: "גילום קצובת נסיעה נטו", amount: 90 },
+    { code: "1130", description: "תשלום שי חגים", amount: 150 },
+    { code: "3010", description: "הפחתת שכר", amount: -42.12 },
+  ],
+  extraDeductions: [
+    { code: "563", description: "דמי חבר ס.הוראה", amount: 29.13 },
+    { code: "581", description: "מס הכנסה מגולם", amount: 17 },
+    { code: "582", description: "ב.לאומי מגולם", amount: 6 },
+    { code: "584", description: "ב.בריאות מגולם", amount: 5 },
+  ],
+};
+
 /** August 2026 תלוש (8-2026.pdf) — paid in September. */
 function buildAug2026PaidInSeptember(): JamaShoglSlipPayload {
   return {
@@ -360,6 +421,22 @@ function buildSep2026PaidInOctober(): JamaShoglSlipPayload {
     slipBreakdown: SEP_2026_BREAKDOWN,
     notes:
       "תלוש בן גוריון — ספטמבר 2026 (9-2026.pdf) · שולם באוקטובר · נטו לתשלום 4,079.88",
+  };
+}
+
+/** October 2026 work (PaySlip2026-10.pdf) — paid in November. */
+function buildOct2026PaidInNovember(): JamaShoglSlipPayload {
+  return {
+    gross: 4479.36,
+    net: 2673.35,
+    tax: 1404,
+    pension: 254.9,
+    kerenHishtalmut: 89.98,
+    fees: 57.13,
+    bonus: 0,
+    slipBreakdown: OCT_2026_BREAKDOWN,
+    notes:
+      "תלוש בן גוריון — עבודה אוקטובר 2026 (PaySlip2026-10.pdf) · שולם בנובמבר · נטו 2,673.35",
   };
 }
 
@@ -407,6 +484,7 @@ function buildHighSlip(month: number): JamaShoglSlipPayload {
 function buildLowSlip(month: number): JamaShoglSlipPayload {
   if (month === 9) return buildAug2026PaidInSeptember();
   if (month === 10) return buildSep2026PaidInOctober();
+  if (month === 11) return buildOct2026PaidInNovember();
   if (month >= 6) {
     const net = NET_BY_MONTH[month] ?? 2039.25;
     return {

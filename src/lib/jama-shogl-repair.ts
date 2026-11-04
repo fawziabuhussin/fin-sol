@@ -8,7 +8,7 @@ import {
 } from "@/lib/jama-shogl-payslip";
 import { syncSalarySlipIncome } from "@/lib/salary-income-sync";
 
-const OFFICIAL_PAY_MONTHS_2026 = [9, 10] as const;
+const OFFICIAL_PAY_MONTHS_2026 = [9, 10, 11] as const;
 
 function employerNameFilters(name: string) {
   const hints = JAMA_SHOGL_NAMES.filter(

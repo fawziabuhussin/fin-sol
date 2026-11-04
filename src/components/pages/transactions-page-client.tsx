@@ -27,6 +27,10 @@ import {
 import { DataTable } from "@/components/tables/data-table";
 import { RowActions } from "@/components/tables/row-actions";
 import { TransactionSheet } from "@/components/forms/transaction-sheet";
+import {
+  IsracardImportSheet,
+  IsracardImportTrigger,
+} from "@/components/forms/isracard-import-sheet";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
@@ -125,6 +129,7 @@ export function TransactionsPageClient({
 }) {
   const router = useRouter();
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [isracardOpen, setIsracardOpen] = useState(false);
   const [editing, setEditing] = useState<TransactionRow | null>(null);
   const [defaultType, setDefaultType] = useState<"INCOME" | "EXPENSE">("EXPENSE");
   const [q, setQ] = useState(filters.q);
@@ -469,6 +474,7 @@ export function TransactionsPageClient({
           </p>
         </div>
         <div className="flex flex-wrap gap-2 self-start sm:self-auto">
+          <IsracardImportTrigger onClick={() => setIsracardOpen(true)} />
           <Button variant="outline" onClick={() => openAdd("INCOME")} className="gap-2">
             <Plus className="h-4 w-4" />
             إضافة دخل
@@ -735,6 +741,8 @@ export function TransactionsPageClient({
           )}
         </CardContent>
       </Card>
+
+      <IsracardImportSheet open={isracardOpen} onOpenChange={setIsracardOpen} />
 
       <TransactionSheet
         open={sheetOpen}
