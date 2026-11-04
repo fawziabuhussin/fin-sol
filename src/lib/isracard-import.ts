@@ -15,6 +15,8 @@ export type IsracardStatementRow = {
   amount: number;
   installmentNote?: string;
   standingOrder?: boolean;
+  /** Already recorded via الأقساط — reconcile only, do not create on import. */
+  fromSplit?: boolean;
 };
 
 export type IsracardStatementPack = {
@@ -63,6 +65,7 @@ export const ISRACARD_STATEMENT_PACKS: IsracardStatementPack[] = [
         sector: "תש' רשויות",
         amount: 2253,
         installmentNote: "תשלום 1 מתוך 2",
+        fromSplit: true,
       },
       { txnDate: "29/10/26", merchant: "טייק ברייק", sector: "מסעדות/קפה", amount: 297 },
       {
@@ -126,6 +129,87 @@ export const ISRACARD_STATEMENT_PACKS: IsracardStatementPack[] = [
         merchant: 'סופר אלביאן בע"מ',
         sector: "מכולת/סופר",
         amount: 274.74,
+      },
+      // — תשלומים (الأقساط) on same Isracard billing —
+      {
+        txnDate: "25/10/26",
+        merchant: "מקדימה ביטוח רכב",
+        sector: "ביטוח",
+        amount: 251,
+        installmentNote: "מקדימה · תשלום 1 מתוך 12",
+        fromSplit: true,
+      },
+      {
+        txnDate: "19/10/26",
+        merchant: "אחמד זוהדי מרקט - חר",
+        sector: "מכולת/סופר",
+        amount: 699.35,
+        installmentNote: "תשלום 1 מתוך 2",
+        fromSplit: true,
+      },
+      {
+        txnDate: "24/08/26",
+        merchant: "מחסני חשמל - אלקטרה",
+        sector: "שונות",
+        amount: 433.33,
+        installmentNote: "תשלום 3 מתוך 3 · תשלום אחרון",
+        fromSplit: true,
+      },
+      {
+        txnDate: "04/09/26",
+        merchant: "ויטוריו דיוואני-צמרת",
+        sector: "שונות",
+        amount: 298.75,
+        installmentNote: "תשלום 3 מתוך 8",
+        fromSplit: true,
+      },
+      {
+        txnDate: "04/09/26",
+        merchant: "דורי הום ריהוט ועיצו",
+        sector: "שונות",
+        amount: 288,
+        installmentNote: "תשלום 3 מתוך 8",
+        fromSplit: true,
+      },
+      {
+        txnDate: "04/11/26",
+        merchant: "YM EMOH - מיי הום",
+        sector: "שונות",
+        amount: 840.5,
+        installmentNote: "תשלום 1 מתוך 6",
+        fromSplit: true,
+      },
+      {
+        txnDate: "04/11/26",
+        merchant: "مصروف مقسّط (12)",
+        sector: "ביטוח",
+        amount: 243,
+        installmentNote: "תשלום 2 מתוך 12",
+        fromSplit: true,
+      },
+      {
+        txnDate: "04/11/26",
+        merchant: "مصروف مقسّط (4)",
+        sector: "תש' רשויות",
+        amount: 240,
+        installmentNote: "תשלום 2 מתוך 4",
+        fromSplit: true,
+      },
+      {
+        txnDate: "04/11/26",
+        merchant: "עיר המותגים",
+        sector: "הלבשה",
+        amount: 185,
+        installmentNote: "תשלום 2 מתוך 2",
+        fromSplit: true,
+      },
+      {
+        txnDate: "04/11/26",
+        merchant: 'עותמאן עתאמנה בע"מ',
+        sector: "הלבשה",
+        amount: 300,
+        installmentNote: "תשלום 2 מתוך 3",
+        fromSplit: true,
       },
     ],
   },
@@ -196,14 +280,31 @@ function isImportNoteTransaction(notes: string | null | undefined, pack: Isracar
 }
 
 function merchantMatchesRow(row: IsracardStatementRow, description: string | null, amount: number) {
-  if (!amountsMatch(amount, row.amount)) {
-    if (!isracardDescriptionsMatch(row.merchant, description)) return false;
+  if (amountsMatch(amount, row.amount)) {
+    if (isracardDescriptionsMatch(row.merchant, description)) return true;
+    const tail = description?.includes("—")
+      ? description.split("—").pop()?.trim()
+      : description;
+    if (tail && isracardDescriptionsMatch(row.merchant, tail)) return true;
+  } else if (isracardDescriptionsMatch(row.merchant, description)) {
     if (Math.abs(amount - row.amount) >= 1) return false;
-  } else if (!isracardDescriptionsMatch(row.merchant, description)) {
-    if (row.amount === 2692.36 && /חשמל/i.test(description ?? "")) return true;
-    if (row.amount === 2253 && (/עירון|מיי/i.test(description ?? "") || /مقسّط \(2\)|מים|מיא/i.test(description ?? ""))) return true;
-    if (row.amount === 150.08 && /כלל/i.test(description ?? "")) return true;
-    return false;
+  } else {
+    const tail = description?.includes("—")
+      ? description.split("—").pop()?.trim()
+      : description;
+    if (!tail || !isracardDescriptionsMatch(row.merchant, tail)) {
+      if (row.amount === 2692.36 && /חשמל/i.test(description ?? "")) return amountsMatch(amount, row.amount);
+      if (row.amount === 2253 && (/עירון|מיי/i.test(description ?? "") || /مقسّط \(2\)|מים|מיא/i.test(description ?? "")))
+        return amountsMatch(amount, row.amount);
+      if (row.amount === 150.08 && /כלל/i.test(description ?? "")) return amountsMatch(amount, row.amount);
+      if (row.amount === 243 && /مقسّط \(12\)/.test(description ?? "")) return amountsMatch(amount, row.amount);
+      if (row.amount === 240 && /مقسّط \(4\)/.test(description ?? "")) return amountsMatch(amount, row.amount);
+      if (row.amount === 699.35 && /זוהדי|zuhadi/i.test(description ?? "")) return amountsMatch(amount, row.amount);
+      if (row.amount === 251 && /מקדימה|مقدّمة|مقسّط \(12\)/.test(description ?? ""))
+        return amountsMatch(amount, row.amount);
+      return false;
+    }
+    if (Math.abs(amount - row.amount) >= 1) return false;
   }
   return true;
 }
@@ -253,7 +354,7 @@ export async function reconcileIsracardStatementBilling(
       userId,
       type: TransactionType.EXPENSE,
       occurredAt: {
-        gte: new Date(Date.UTC(2026, 9, 1)),
+        gte: new Date(Date.UTC(2026, 7, 1)),
         lt: new Date(Date.UTC(2026, 11, 30)),
       },
     },
@@ -416,6 +517,11 @@ export async function importIsracardStatementPack(
           isracardDescriptionsMatch(description, t.description))
     );
     if (dup) {
+      skippedDup++;
+      continue;
+    }
+
+    if (row.fromSplit) {
       skippedDup++;
       continue;
     }

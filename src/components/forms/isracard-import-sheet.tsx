@@ -163,7 +163,7 @@ export function IsracardImportSheet({
             </Button>
             <Button
               type="button"
-              variant="secondary"
+              variant="outline"
               disabled={isPending || !packId}
               onClick={runReconcile}
             >
