@@ -244,6 +244,24 @@ export function SubscriptionsPageClient({
     });
   };
 
+  const stopFromThisMonth = (id: string, title: string) => {
+    startTransition(async () => {
+      const res = await fetch(
+        `/api/subscriptions/${id}?scope=upcoming&year=${data.year}&month=${data.month}`,
+        { method: "DELETE" }
+      );
+      if (!res.ok) {
+        toast.error("فشل الإيقاف");
+        return;
+      }
+      toast.success(
+        `تم إيقاف «${title}» من ${data.monthLabel} ${data.year} فصاعداً — يبقى في الأشهر السابقة`
+      );
+      setDeleteTarget(null);
+      router.refresh();
+    });
+  };
+
   const deleteEntirely = (id: string, title: string) => {
     startTransition(async () => {
       const res = await fetch(`/api/subscriptions/${id}`, { method: "DELETE" });
@@ -310,7 +328,8 @@ export function SubscriptionsPageClient({
           <CardHeader>
             <CardTitle className="text-base">اشتراك متكرر جديد</CardTitle>
             <p className="text-xs text-slate-500">
-              سيظهر في كل شهر حتى تحذفه — يمكنك إخفاؤه من شهر واحد أو حذفه نهائياً
+              سيظهر في كل شهر حتى توقفه — يمكنك إخفاءه من شهر واحد، إيقافه من شهر
+              معيّن فصاعداً، أو حذفه نهائياً
             </p>
           </CardHeader>
           <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -509,6 +528,19 @@ export function SubscriptionsPageClient({
                 إخفاء من هذا الشهر فقط
                 <span className="mr-auto text-xs text-slate-500">
                   يبقى في الأشهر الأخرى
+                </span>
+              </Button>
+              <Button
+                variant="outline"
+                className="w-full justify-start border-amber-200 bg-amber-50/80 hover:bg-amber-50"
+                disabled={isPending}
+                onClick={() =>
+                  stopFromThisMonth(deleteTarget.id, deleteTarget.title)
+                }
+              >
+                إيقاف من هذا الشهر فصاعداً
+                <span className="mr-auto text-xs text-slate-500">
+                  يبقى في الأشهر السابقة فقط
                 </span>
               </Button>
               <Button

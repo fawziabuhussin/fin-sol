@@ -28,6 +28,7 @@ import {
 import { contractorBudgetTotal } from "@/lib/project-completion-utils";
 import { masterBudgetFromChildren, topLevelProjectWhere } from "@/lib/project-tree";
 import { SPLIT_EXPENSES_CONTAINER_TITLE } from "@/lib/expense-installments";
+import { subscriptionActiveInMonth } from "@/lib/subscription-period";
 import {
   aggregateExpensesByGroup,
   findUncategorizedExpenses,
@@ -1272,7 +1273,11 @@ export async function getSubscriptionsMonthly(
     },
   });
 
-  const visible = subscriptions.filter((sub) => sub.monthSkips.length === 0);
+  const visible = subscriptions.filter(
+    (sub) =>
+      sub.monthSkips.length === 0 &&
+      subscriptionActiveInMonth(sub, year, month)
+  );
 
   const items = visible.map((sub) => {
     const payment = sub.payments[0] ?? null;

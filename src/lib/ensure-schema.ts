@@ -9,9 +9,12 @@ let schemaPromise: Promise<void> | null = null;
 
 export function ensureDbSchema() {
   if (!schemaPromise) {
-    schemaPromise = applySplitPaymentTables().catch((error) => {
+    schemaPromise = Promise.all([
+      applySplitPaymentTables(),
+      applySubscriptionColumns(),
+    ]).then(() => undefined).catch((error) => {
       schemaPromise = null;
-      console.error("[schema] split payment tables", error);
+      console.error("[schema]", error);
     });
   }
   return schemaPromise;
@@ -108,5 +111,14 @@ async function applySplitPaymentTables() {
   await addConstraint(
     "SplitPaymentInstallment_transactionId_fkey",
     `ALTER TABLE "SplitPaymentInstallment" ADD CONSTRAINT "SplitPaymentInstallment_transactionId_fkey" FOREIGN KEY ("transactionId") REFERENCES "Transaction"("id") ON DELETE SET NULL ON UPDATE CASCADE`
+  );
+}
+
+async function applySubscriptionColumns() {
+  await exec(
+    `ALTER TABLE "Subscription" ADD COLUMN IF NOT EXISTS "lastActivePeriodYear" INTEGER`
+  );
+  await exec(
+    `ALTER TABLE "Subscription" ADD COLUMN IF NOT EXISTS "lastActivePeriodMonth" INTEGER`
   );
 }

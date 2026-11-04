@@ -2,7 +2,9 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/session";
 import { handleApiError } from "@/lib/api-error";
+import { ensureDbSchema } from "@/lib/ensure-schema";
 import { subscriptionPatchSchema } from "@/lib/validations/subscriptions";
+import { previousCalendarMonth } from "@/lib/subscription-period";
 
 async function owns(userId: string, id: string) {
   return prisma.subscription.findFirst({ where: { id, userId } });
@@ -14,6 +16,7 @@ export async function PATCH(
 ) {
   try {
     const user = await requireUser();
+    await ensureDbSchema();
     const { id } = await params;
     const sub = await owns(user.id, id);
     if (!sub) {
@@ -48,13 +51,14 @@ export async function PATCH(
   }
 }
 
-/** scope=month hides from one month; default deletes the recurring subscription entirely */
+/** scope=month hides from one month; scope=upcoming ends before current month; default deletes entirely */
 export async function DELETE(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const user = await requireUser();
+    await ensureDbSchema();
     const { id } = await params;
     const sub = await owns(user.id, id);
     if (!sub) {
@@ -79,6 +83,18 @@ export async function DELETE(
         update: {},
       });
       return NextResponse.json({ ok: true, scope: "month" });
+    }
+
+    if (scope === "upcoming" && year && month) {
+      const prev = previousCalendarMonth(year, month);
+      await prisma.subscription.update({
+        where: { id },
+        data: {
+          lastActivePeriodYear: prev.year,
+          lastActivePeriodMonth: prev.month,
+        },
+      });
+      return NextResponse.json({ ok: true, scope: "upcoming", ...prev });
     }
 
     const payments = await prisma.subscriptionPayment.findMany({
