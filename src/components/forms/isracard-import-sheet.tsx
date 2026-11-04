@@ -20,6 +20,7 @@ type PackMeta = {
   id: string;
   label: string;
   cardNote: string;
+  billingDate?: string;
   rowCount: number;
   statementTotal: number;
 };
@@ -53,6 +54,27 @@ export function IsracardImportSheet({
   }, [open]);
 
   const selected = packs.find((p) => p.id === packId);
+
+  const runReconcile = () => {
+    if (!packId) return;
+    startTransition(async () => {
+      const res = await fetch("/api/isracard-import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ packId, reconcileBilling: true }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(data.error ?? "فشل مواءمة التاريخ");
+        return;
+      }
+      toast.success(
+        `תאריך חיוב 20/11: ${data.updated} עודכנו · ${data.deleted} כפילויות הוסרו · סה״כ ${formatCurrency(data.billingDayTotal)}`
+      );
+      onOpenChange(false);
+      router.refresh();
+    });
+  };
 
   const runImport = (dryRun: boolean) => {
     if (!packId) return;
@@ -92,8 +114,8 @@ export function IsracardImportSheet({
             استيراد ישראכרט
           </SheetTitle>
           <SheetDescription>
-            يضيف مصروفات כרטיס אשראי من دفتر חיוב محفوظ في التطبيق. المعاملات
-            المطابقة (تاريخ + مبلغ + تاجر) لا تُكرَّر.
+            יضيف مصروفات כרטיס אשראי לתאריך <strong>חיוב 20/11</strong> (לא תאריך
+            הרכישה). כפילויות עם الأقساط או إدخال יدوي تُدمَج.
           </SheetDescription>
         </SheetHeader>
 
@@ -117,7 +139,7 @@ export function IsracardImportSheet({
 
           {selected ? (
             <p className="text-sm text-slate-600">
-              {selected.rowCount} שורות · סה״כ דף{" "}
+              {selected.rowCount} שורות · חיוב {selected.billingDate ?? "20/11/26"} · סה״כ דף{" "}
               {formatCurrency(selected.statementTotal)} · כרטיס {selected.cardNote}
             </p>
           ) : null}
@@ -138,6 +160,14 @@ export function IsracardImportSheet({
             >
               {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
               معاينة
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={isPending || !packId}
+              onClick={runReconcile}
+            >
+              مواءمة 20/11
             </Button>
             <Button
               type="button"

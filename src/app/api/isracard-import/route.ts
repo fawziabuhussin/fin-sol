@@ -6,11 +6,13 @@ import { handleApiError } from "@/lib/api-error";
 import {
   importIsracardStatementPack,
   listIsracardStatementPacks,
+  reconcileIsracardStatementBilling,
 } from "@/lib/isracard-import";
 
 const postSchema = z.object({
   packId: z.string().min(1),
   dryRun: z.boolean().optional(),
+  reconcileBilling: z.boolean().optional(),
 });
 
 export async function GET() {
@@ -31,12 +33,13 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
     }
 
-    const result = await importIsracardStatementPack(
-      prisma,
-      user.id,
-      parsed.data.packId,
-      { dryRun: parsed.data.dryRun }
-    );
+    const result = parsed.data.reconcileBilling
+      ? await reconcileIsracardStatementBilling(prisma, user.id, parsed.data.packId, {
+          dryRun: parsed.data.dryRun,
+        })
+      : await importIsracardStatementPack(prisma, user.id, parsed.data.packId, {
+          dryRun: parsed.data.dryRun,
+        });
 
     return NextResponse.json(result);
   } catch (error) {

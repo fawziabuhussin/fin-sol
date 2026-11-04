@@ -22,6 +22,8 @@ export type IsracardStatementPack = {
   label: string;
   cardNote: string;
   importNote: string;
+  /** When the card is charged (דף חיוב) — used as `occurredAt`. */
+  billingDate: string;
   rows: IsracardStatementRow[];
 };
 
@@ -32,6 +34,7 @@ export const ISRACARD_STATEMENT_PACKS: IsracardStatementPack[] = [
     label: "חיוב 11/2026 — Gold 8841",
     cardNote: "8841",
     importNote: "ייבוא ישראכרט 8841 — חיוב 11/2026",
+    billingDate: "20/11/26",
     rows: [
       { txnDate: "02/11/26", merchant: "כונסים", sector: "שונות", amount: 249 },
       { txnDate: "02/11/26", merchant: "קפה נאפולי", sector: "מסעדות/קפה", amount: 10 },
@@ -129,10 +132,11 @@ export const ISRACARD_STATEMENT_PACKS: IsracardStatementPack[] = [
 ];
 
 export function listIsracardStatementPacks() {
-  return ISRACARD_STATEMENT_PACKS.map(({ id, label, cardNote, rows }) => ({
+  return ISRACARD_STATEMENT_PACKS.map(({ id, label, cardNote, billingDate, rows }) => ({
     id,
     label,
     cardNote,
+    billingDate,
     rowCount: rows.length,
     statementTotal: rows.reduce((s, r) => s + r.amount, 0),
   }));
@@ -172,13 +176,179 @@ function amountsMatch(a: number, b: number) {
   return Math.abs(a - b) < 0.02;
 }
 
-function dedupeWindowForPack(pack: IsracardStatementPack) {
-  const dates = pack.rows.map((r) => parseIsracardDdMmYy(r.txnDate).getTime());
-  const min = new Date(Math.min(...dates));
-  const max = new Date(Math.max(...dates));
-  min.setUTCDate(min.getUTCDate() - 1);
-  max.setUTCDate(max.getUTCDate() + 2);
-  return { gte: min, lt: max };
+export function billingDateForPack(pack: IsracardStatementPack): Date {
+  return parseIsracardDdMmYy(pack.billingDate);
+}
+
+function rowNotes(pack: IsracardStatementPack, row: IsracardStatementRow): string {
+  return [
+    pack.importNote,
+    `רכישה ${row.txnDate}`,
+    row.installmentNote,
+    row.standingOrder ? "הוראת קבע" : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+function isImportNoteTransaction(notes: string | null | undefined, pack: IsracardStatementPack) {
+  return Boolean(notes?.includes(pack.importNote));
+}
+
+function merchantMatchesRow(row: IsracardStatementRow, description: string | null, amount: number) {
+  if (!amountsMatch(amount, row.amount)) {
+    if (!isracardDescriptionsMatch(row.merchant, description)) return false;
+    if (Math.abs(amount - row.amount) >= 1) return false;
+  } else if (!isracardDescriptionsMatch(row.merchant, description)) {
+    if (row.amount === 2692.36 && /חשמל/i.test(description ?? "")) return true;
+    if (row.amount === 2253 && (/עירון|מיי/i.test(description ?? "") || /مقسّط \(2\)|מים|מיא/i.test(description ?? ""))) return true;
+    if (row.amount === 150.08 && /כלל/i.test(description ?? "")) return true;
+    return false;
+  }
+  return true;
+}
+
+async function linkedInstallmentTransactionIds(prisma: PrismaClient, userId: string) {
+  const [split, project] = await Promise.all([
+    prisma.splitPaymentInstallment.findMany({
+      where: { plan: { userId }, transactionId: { not: null } },
+      select: { transactionId: true },
+    }),
+    prisma.projectInstallment.findMany({
+      where: { plan: { userId }, transactionId: { not: null } },
+      select: { transactionId: true },
+    }),
+  ]);
+  return new Set(
+    [...split, ...project].map((i) => i.transactionId).filter(Boolean) as string[]
+  );
+}
+
+export type IsracardBillingReconcileResult = {
+  packId: string;
+  billingDate: string;
+  updated: number;
+  deleted: number;
+  billingDayTotal: number;
+  dryRun: boolean;
+};
+
+/** Move statement rows to billing date and collapse duplicates (imports vs splits/manual). */
+export async function reconcileIsracardStatementBilling(
+  prisma: PrismaClient,
+  userId: string,
+  packId: string,
+  options?: { dryRun?: boolean }
+): Promise<IsracardBillingReconcileResult> {
+  const dryRun = options?.dryRun ?? false;
+  const pack = getIsracardStatementPack(packId);
+  if (!pack) throw new Error(`Unknown Isracard statement pack: ${packId}`);
+
+  const billingAt = billingDateForPack(pack);
+  const billingIso = billingAt.toISOString().slice(0, 10);
+  const linkedIds = await linkedInstallmentTransactionIds(prisma, userId);
+
+  const candidates = await prisma.transaction.findMany({
+    where: {
+      userId,
+      type: TransactionType.EXPENSE,
+      occurredAt: {
+        gte: new Date(Date.UTC(2026, 9, 1)),
+        lt: new Date(Date.UTC(2026, 11, 30)),
+      },
+    },
+  });
+
+  let updated = 0;
+  let deleted = 0;
+  const deletedIds = new Set<string>();
+
+  for (const row of pack.rows) {
+    const matches = candidates.filter(
+      (t) =>
+        !deletedIds.has(t.id) &&
+        merchantMatchesRow(row, t.description, Number(t.amount))
+    );
+
+    if (matches.length === 0) continue;
+
+    const ranked = [...matches].sort((a, b) => {
+      const score = (t: Transaction) => {
+        let s = 0;
+        if (linkedIds.has(t.id)) s += 100;
+        if (t.occurredAt.toISOString().slice(0, 10) === billingIso) s += 40;
+        if (!isImportNoteTransaction(t.notes, pack)) s += 25;
+        if (isImportNoteTransaction(t.notes, pack)) s -= 10;
+        return s;
+      };
+      return score(b) - score(a);
+    });
+
+    const keeper = ranked[0];
+    for (const dup of ranked.slice(1)) {
+      if (!dryRun) {
+        await prisma.transaction.delete({ where: { id: dup.id } }).catch(() => null);
+      }
+      deletedIds.add(dup.id);
+      deleted++;
+    }
+
+    const notes = rowNotes(pack, row);
+    const isLinked = linkedIds.has(keeper.id);
+    const needsDate = keeper.occurredAt.toISOString().slice(0, 10) !== billingIso;
+    const needsNotes = !isLinked && !keeper.notes?.includes(pack.importNote);
+    if (needsDate || needsNotes) {
+      if (!dryRun) {
+        await prisma.transaction.update({
+          where: { id: keeper.id },
+          data: {
+            occurredAt: billingAt,
+            ...(needsNotes ? { notes } : {}),
+            ...(needsDate && row.amount === 370.29 && amountsMatch(Number(keeper.amount), 370)
+              ? { amount: row.amount }
+              : {}),
+          },
+        });
+      }
+      updated++;
+    }
+  }
+
+  // Remove stray import rows for this pack that did not match any row (safety)
+  for (const t of candidates) {
+    if (deletedIds.has(t.id)) continue;
+    if (!isImportNoteTransaction(t.notes, pack)) continue;
+    const matchedRow = pack.rows.some((row) =>
+      merchantMatchesRow(row, t.description, Number(t.amount))
+    );
+    if (matchedRow) continue;
+    if (!dryRun) await prisma.transaction.delete({ where: { id: t.id } }).catch(() => null);
+    deletedIds.add(t.id);
+    deleted++;
+  }
+
+  const billingDay = await prisma.transaction.findMany({
+    where: {
+      userId,
+      type: TransactionType.EXPENSE,
+      occurredAt: {
+        gte: billingAt,
+        lt: new Date(billingAt.getTime() + 24 * 60 * 60 * 1000),
+      },
+    },
+  });
+  const billingDayTotal = billingDay
+    .filter((t) => !deletedIds.has(t.id))
+    .reduce((s, t) => s + Number(t.amount), 0);
+
+  return {
+    packId,
+    billingDate: pack.billingDate,
+    updated,
+    deleted,
+    billingDayTotal,
+    dryRun,
+  };
 }
 
 export type IsracardImportResult = {
@@ -214,7 +384,13 @@ export async function importIsracardStatementPack(
     });
   }
 
-  const window = dedupeWindowForPack(pack);
+  const billingAt = billingDateForPack(pack);
+  const billingIso = billingAt.toISOString().slice(0, 10);
+
+  const window = {
+    gte: new Date(Date.UTC(2026, 9, 1)),
+    lt: new Date(Date.UTC(2026, 11, 30)),
+  };
   const existing = await prisma.transaction.findMany({
     where: {
       userId,
@@ -228,22 +404,16 @@ export async function importIsracardStatementPack(
   const workingExisting: Transaction[] = [...existing];
 
   for (const row of pack.rows) {
-    const occurredAt = parseIsracardDdMmYy(row.txnDate);
+    const occurredAt = billingAt;
     const description = row.merchant.trim();
     const amount = row.amount;
-    const notes = [
-      pack.importNote,
-      row.installmentNote,
-      row.standingOrder ? "הוראת קבע" : null,
-    ]
-      .filter(Boolean)
-      .join(" · ");
+    const notes = rowNotes(pack, row);
 
     const dup = workingExisting.find(
       (t) =>
-        amountsMatch(Number(t.amount), amount) &&
-        isracardDescriptionsMatch(description, t.description) &&
-        t.occurredAt.toISOString().slice(0, 10) === occurredAt.toISOString().slice(0, 10)
+        merchantMatchesRow(row, t.description, Number(t.amount)) &&
+        (t.occurredAt.toISOString().slice(0, 10) === billingIso ||
+          isracardDescriptionsMatch(description, t.description))
     );
     if (dup) {
       skippedDup++;
