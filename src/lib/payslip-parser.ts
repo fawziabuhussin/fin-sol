@@ -92,6 +92,14 @@ function periodFromText(text: string) {
   return {};
 }
 
+function bguPayMonthFromWorkPeriod(
+  workYear: number,
+  workMonth: number
+): { periodYear: number; periodMonth: number } {
+  if (workMonth === 12) return { periodYear: workYear + 1, periodMonth: 1 };
+  return { periodYear: workYear, periodMonth: workMonth + 1 };
+}
+
 function applyOfficialBguSlip(result: PayslipParseResult): PayslipParseResult {
   if (result.employerHint !== "bgu") return result;
   if (result.periodYear == null || result.periodMonth == null) return result;
@@ -117,12 +125,21 @@ function applyOfficialBguSlip(result: PayslipParseResult): PayslipParseResult {
 function parseBguPayslip(text: string, fileName?: string): PayslipParseResult {
   const fromFile = periodFromFileName(fileName);
   const fromText = periodFromText(text);
+  const workYear = fromText.periodYear ?? fromFile.periodYear;
+  const workMonth = fromText.periodMonth ?? fromFile.periodMonth;
+  let periodYear = workYear;
+  let periodMonth = workMonth;
+  if (workYear != null && workMonth != null) {
+    const payPeriod = bguPayMonthFromWorkPeriod(workYear, workMonth);
+    periodYear = payPeriod.periodYear;
+    periodMonth = payPeriod.periodMonth;
+  }
   const result: PayslipParseResult = {
     confidence: "low",
     employerHint: "bgu",
     rawText: text.slice(0, 12000),
-    periodYear: fromFile.periodYear ?? fromText.periodYear,
-    periodMonth: fromFile.periodMonth ?? fromText.periodMonth,
+    periodYear,
+    periodMonth,
   };
 
   const net =
