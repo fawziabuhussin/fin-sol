@@ -57,15 +57,15 @@ const MERCHANT_RULES: { category: ExpenseCategoryName; patterns: RegExp[] }[] = 
   },
   {
     category: "رسوم بنكية",
-    patterns: [/דמי כרטיס/i, /פועלים/i],
+    patterns: [/דמי כרטיס/i, /פועלים/i, /ontime/i, /ע\.מפעולות/i, /הקצאת אשראי/i],
   },
   {
     category: "تأمين",
-    patterns: [/aig/i, /ביטוח/i],
+    patterns: [/aig/i, /ביטוח/i, /מכבי/i],
   },
   {
     category: "وقود",
-    patterns: [/פז/i, /yellow/i, /דלק/i, /אלון/i],
+    patterns: [/פז/i, /yellow/i, /דלק/i, /אלון/i, /טן באקה/i, /^טן\b/i],
   },
   {
     category: "موقف سيارات",
@@ -73,7 +73,7 @@ const MERCHANT_RULES: { category: ExpenseCategoryName; patterns: RegExp[] }[] = 
   },
   {
     category: "مواصلات",
-    patterns: [/האאט/i, /wolt/i, /דילברי/i],
+    patterns: [/האאט/i, /wolt/i, /דילברי/i, /חלקי חילוף/i],
   },
   {
     category: "صيدلية",
@@ -100,6 +100,8 @@ const MERCHANT_RULES: { category: ExpenseCategoryName; patterns: RegExp[] }[] = 
       /קליאופטרה/i,
       /חקן אל חריר/i,
       /maran/i,
+      /עיר המותגים/i,
+      /lavia/i,
     ],
   },
   {
@@ -135,6 +137,9 @@ const MERCHANT_RULES: { category: ExpenseCategoryName; patterns: RegExp[] }[] = 
       /קופי/i,
       /coffee/i,
       /קיוסק אל טארק/i,
+      /בלוביריי/i,
+      /ערב אספרסו/i,
+      /סטאר קפה/i,
     ],
   },
   {
@@ -158,6 +163,8 @@ const MERCHANT_RULES: { category: ExpenseCategoryName; patterns: RegExp[] }[] = 
       /אלבאחאר/i,
       /אגיאל/i,
       /סאן גת/i,
+      /milagros/i,
+      /זאצי/i,
     ],
   },
 ];
