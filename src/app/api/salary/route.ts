@@ -6,6 +6,11 @@ import { salarySchema } from "@/lib/validations/salary";
 import { syncSalarySlipIncome } from "@/lib/salary-income-sync";
 import { resolveEmployerPaidSlip } from "@/lib/employer-paid-slip";
 import { isOwnerEmail } from "@/lib/security/owner";
+import {
+  isJamaShoglEmployer,
+  officialJamaShoglSlipFromPdf,
+  isStaleJamaShoglSlip,
+} from "@/lib/jama-shogl-payslip";
 
 export async function POST(req: Request) {
   try {
@@ -26,28 +31,36 @@ export async function POST(req: Request) {
 
     let slip = { ...data };
     // Hard-coded payslip templates belong to the original owner only.
-    if (data.paid && isOwnerEmail(user.email)) {
-      const template = resolveEmployerPaidSlip(
-        employer.name,
-        data.periodYear,
-        data.periodMonth
-      );
-      if (template) {
-        slip = {
-          ...data,
-          worked: true,
-          paid: true,
-          gross: template.gross,
-          net: template.net,
-          tax: template.tax,
-          pension: template.pension,
-          kerenHishtalmut: template.kerenHishtalmut,
-          fees: template.fees,
-          bonus: template.bonus,
-          notes: template.notes,
-          slipBreakdown: template.slipBreakdown,
-        };
-      }
+    const isOwner = isOwnerEmail(user.email);
+    const officialPdf = isOwner && isJamaShoglEmployer(employer.name)
+      ? officialJamaShoglSlipFromPdf(data.periodYear, data.periodMonth)
+      : null;
+    const paidTemplate = isOwner && data.paid
+      ? resolveEmployerPaidSlip(
+          employer.name,
+          data.periodYear,
+          data.periodMonth
+        )
+      : null;
+    const template =
+      officialPdf && isStaleJamaShoglSlip(data, officialPdf)
+        ? officialPdf
+        : paidTemplate;
+    if (template) {
+      slip = {
+        ...data,
+        worked: true,
+        paid: data.paid ?? false,
+        gross: template.gross,
+        net: template.net,
+        tax: template.tax,
+        pension: template.pension,
+        kerenHishtalmut: template.kerenHishtalmut,
+        fees: template.fees,
+        bonus: template.bonus,
+        notes: template.notes,
+        slipBreakdown: template.slipBreakdown,
+      };
     }
 
     const created = await prisma.salarySlip.upsert({

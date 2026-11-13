@@ -59,7 +59,7 @@ export function SlipBreakdownCard({
               </li>
             )}
           </ul>
-          {!compact && pension.lines && pension.lines.length > 0 && (
+          {pension.lines && pension.lines.length > 0 && (
             <div className="mt-2 space-y-1 border-t border-slate-200 pt-2">
               {pension.lines.map((line, i) => (
                 <div
@@ -92,6 +92,47 @@ export function SlipBreakdownCard({
             </li>
           </ul>
         </div>
+
+        {breakdown.extraDeductions && breakdown.extraDeductions.length > 0 && (
+          <div>
+            <p className="text-xs font-semibold text-amber-700">ניכויי חובה נוספים</p>
+            <ul className="mt-1 space-y-0.5 text-xs text-slate-700">
+              {breakdown.extraDeductions.map((line, i) => (
+                <li key={i} className="flex justify-between gap-2">
+                  <span>
+                    {line.description}
+                    {line.period ? ` · ${line.period}` : ""}
+                  </span>
+                  <span>{formatCurrency(line.amount)}</span>
+                </li>
+              ))}
+              {breakdown.otherDeductions != null && (
+                <li className="flex justify-between gap-2 border-t border-slate-200 pt-1 font-semibold">
+                  <span>סה״כ</span>
+                  <span>{formatCurrency(breakdown.otherDeductions)}</span>
+                </li>
+              )}
+            </ul>
+          </div>
+        )}
+
+        {breakdown.payments && breakdown.payments.length > 0 && (
+          <div>
+            <p className="text-xs font-semibold text-emerald-700">פירוט תשלומים</p>
+            <ul className="mt-1 space-y-0.5 text-xs text-slate-700">
+              {breakdown.payments.map((line, i) => (
+                <li key={i} className="flex justify-between gap-2">
+                  <span>
+                    {line.code ? `${line.code} ` : ""}
+                    {line.description}
+                    {line.period ? ` · ${line.period}` : ""}
+                  </span>
+                  <span>{formatCurrency(line.amount)}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </div>
     </div>
   );

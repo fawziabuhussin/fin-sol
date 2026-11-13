@@ -12,11 +12,8 @@ export function slipEffectiveNet(slip: {
   bonus: { toString(): string };
   fees: { toString(): string };
 }) {
-  return (
-    decimalToNumber(slip.net) +
-    decimalToNumber(slip.bonus) -
-    decimalToNumber(slip.fees)
-  );
+  // Israeli תלוש נטו already includes ניכויי חובה נוספים (fees).
+  return decimalToNumber(slip.net) + decimalToNumber(slip.bonus);
 }
 
 async function ensureIncomeCategory(userId: string, db: PrismaClient) {

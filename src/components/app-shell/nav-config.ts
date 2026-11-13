@@ -1,5 +1,6 @@
 import {
   ArrowRightLeft,
+  CreditCard,
   FolderKanban,
   LayoutDashboard,
   PiggyBank,
@@ -34,6 +35,7 @@ export const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
     label: "الالتزامات",
     items: [
       { href: "/subscriptions", label: "الاشتراكات", short: "الاشتراكات", icon: Repeat, description: "المدفوعات المتكررة" },
+      { href: "/splits", label: "الأقساط", short: "الأقساط", icon: CreditCard, description: "مشتريات بالتقسيط" },
       { href: "/projects", label: "المشاريع", short: "المشاريع", icon: FolderKanban, description: "ميزانيات وأقساط" },
     ],
   },

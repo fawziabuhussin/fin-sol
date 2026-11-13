@@ -5,6 +5,7 @@ import { ShellClient } from "@/components/app-shell/shell-client";
 import { SIDEBAR_COOKIE } from "@/components/app-shell/nav-config";
 import { AppToaster } from "@/components/ui/sonner";
 import { getQuickAddLookups } from "@/lib/tenant-data";
+import { ensureDbSchema } from "@/lib/ensure-schema";
 
 export default async function AppLayout({
   children,
@@ -16,6 +17,7 @@ export default async function AppLayout({
     redirect("/login");
   }
 
+  await ensureDbSchema();
   const [quickAddLookups, cookieStore] = await Promise.all([
     getQuickAddLookups(session.user.id),
     cookies(),

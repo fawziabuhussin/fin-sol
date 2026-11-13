@@ -1,3 +1,17 @@
+export type SalarySlipPaymentLine = {
+  code?: string;
+  description: string;
+  period?: string;
+  amount: number;
+};
+
+export type SalarySlipDeductionLine = {
+  code?: string;
+  description: string;
+  period?: string;
+  amount: number;
+};
+
 /** Detailed Israeli payslip (תלוש) breakdown — pension (גמל) and taxes (מסים). */
 export type SalarySlipBreakdown = {
   taxes: {
@@ -24,6 +38,8 @@ export type SalarySlipBreakdown = {
     employer: number;
   };
   otherDeductions?: number;
+  payments?: SalarySlipPaymentLine[];
+  extraDeductions?: SalarySlipDeductionLine[];
 };
 
 export type PayslipParseResult = {
@@ -32,6 +48,7 @@ export type PayslipParseResult = {
   tax?: number;
   pension?: number;
   kerenHishtalmut?: number;
+  fees?: number;
   periodYear?: number;
   periodMonth?: number;
   breakdown?: SalarySlipBreakdown;

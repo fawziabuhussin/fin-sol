@@ -1,6 +1,22 @@
 import type { PayslipParseResult, SalarySlipBreakdown } from "@/lib/payslip-types";
+import { officialJamaShoglSlipFromPdf } from "@/lib/jama-shogl-payslip";
 
 export type { PayslipParseResult, SalarySlipBreakdown } from "@/lib/payslip-types";
+
+const HEBREW_MONTHS: Record<string, number> = {
+  ינואר: 1,
+  פברואר: 2,
+  מרץ: 3,
+  אפריל: 4,
+  מאי: 5,
+  יוני: 6,
+  יולי: 7,
+  אוגוסט: 8,
+  ספטמבר: 9,
+  אוקטובר: 10,
+  נובמבר: 11,
+  דצמבר: 12,
+};
 
 const AMOUNT = String.raw`(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)`;
 
@@ -54,6 +70,18 @@ function periodFromFileName(fileName?: string) {
 }
 
 function periodFromText(text: string) {
+  for (const [name, month] of Object.entries(HEBREW_MONTHS)) {
+    const re = new RegExp(
+      `(?:תלוש\\s*שכר\\s*לחודש[:\\s]*)?${escapeRegex(name)}\\s*(\\d{4})`,
+      "i"
+    );
+    const named = text.match(re);
+    if (named) {
+      const year = Number.parseInt(named[1], 10);
+      if (year >= 2020) return { periodMonth: month, periodYear: year };
+    }
+  }
+
   const m = text.match(/(\d{1,2})[\/\-.](\d{4})/g);
   if (!m?.length) return {};
   const last = m[m.length - 1].match(/(\d{1,2})[\/\-.](\d{4})/);
@@ -62,6 +90,27 @@ function periodFromText(text: string) {
   const year = Number.parseInt(last[2], 10);
   if (month >= 1 && month <= 12 && year >= 2020) return { periodMonth: month, periodYear: year };
   return {};
+}
+
+function applyOfficialBguSlip(result: PayslipParseResult): PayslipParseResult {
+  if (result.employerHint !== "bgu") return result;
+  if (result.periodYear == null || result.periodMonth == null) return result;
+  const official = officialJamaShoglSlipFromPdf(
+    result.periodYear,
+    result.periodMonth
+  );
+  if (!official) return result;
+  return {
+    ...result,
+    gross: official.gross,
+    net: official.net,
+    tax: official.tax,
+    pension: official.pension,
+    kerenHishtalmut: official.kerenHishtalmut,
+    fees: official.fees,
+    breakdown: official.slipBreakdown,
+    confidence: "high",
+  };
 }
 
 /** BGU university payslip (common PDF text layout). */
@@ -77,14 +126,21 @@ function parseBguPayslip(text: string, fileName?: string): PayslipParseResult {
   };
 
   const net =
-    findAmountNearLabel(text, ["שכר נטו", "נטו"]) ??
+    findAmountNearLabel(text, ["נטו לתשלום", "שכר נטו", "נטו"]) ??
     parseAmount(text.match(new RegExp(`${AMOUNT}\\s*(?:נטו|åèð\\s*øëù)`, "i"))?.[1]) ??
     parseAmount(text.match(new RegExp(`(?:נטו|åèð\\s*øëù)\\s*${AMOUNT}`, "i"))?.[1]);
 
   const gross =
-    findAmountNearLabel(text, ["סך-כל התשלומים", "שכר מולשם", "סך כל"]) ??
+    findAmountNearLabel(text, ["סך-כל התשלומים", "סה\"כ תשלומים", "שכר מולשם", "סך כל"]) ??
     parseAmount(text.match(new RegExp(`${AMOUNT}\\s*(?:משכורת|שכר מולשם|íéîåìùúä)`, "i"))?.[1]) ??
     parseAmount(text.match(new RegExp(`(?:סך|íéîåìùúä)\\s*${AMOUNT}`, "i"))?.[1]);
+
+  const extraDeductions =
+    findAmountNearLabel(text, ["ניכויי חובה-נוספים", "ניכויי חובה נוספים"]);
+  const fundsTotal =
+    findAmountNearLabel(text, ["קופות גמל בהסכם"]);
+  const taxFromSummary =
+    findAmountNearLabel(text, ["ניכויי חובה-מסים", "ניכויי חובה מסים"]);
 
   const nationalInsurance =
     findAmountNearLabel(text, ["ביטוח לאומי"]) ??
@@ -186,18 +242,34 @@ function parseBguPayslip(text: string, fileName?: string): PayslipParseResult {
       employee: kerenEmployee ?? 0,
       employer: kerenEmployer ?? 0,
     },
+    ...(extraDeductions != null && extraDeductions > 0
+      ? { otherDeductions: extraDeductions }
+      : {}),
   };
 
   result.gross = gross;
   result.net = net;
-  result.tax = taxTotal;
+  result.tax = taxFromSummary && taxFromSummary > 0 ? taxFromSummary : taxTotal;
   result.pension = pensionEmployee;
   result.kerenHishtalmut = kerenEmployee ?? 0;
+  result.fees = extraDeductions;
+  if (
+    fundsTotal != null &&
+    fundsTotal > 0 &&
+    (result.pension ?? 0) + (result.kerenHishtalmut ?? 0) === 0
+  ) {
+    result.pension = fundsTotal;
+  }
+  if (taxFromSummary && taxFromSummary > 0) {
+    breakdown.taxes.total = taxFromSummary;
+  }
   result.breakdown = breakdown;
 
-  const filled = [gross, net, nationalInsurance].filter((v) => v != null && v > 0).length;
+  const filled = [gross, net, nationalInsurance ?? taxFromSummary].filter(
+    (v) => v != null && v > 0
+  ).length;
   result.confidence = filled >= 3 ? "high" : filled >= 2 ? "medium" : "low";
-  return result;
+  return applyOfficialBguSlip(result);
 }
 
 /** Menora / private employer format (תגמולים + פיצויים + קרן השתלמות). */

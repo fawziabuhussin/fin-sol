@@ -12,6 +12,8 @@ import { monthRangeUTC, utcMonth, yearRangeUTC } from "@/lib/dates";
 import { INCOME_SOURCES, monthLabel } from "@/lib/finance-labels";
 import { paidAtForPeriod } from "@/lib/savings-schedule";
 import type { SalarySlipBreakdown } from "@/lib/payslip-types";
+import { applyOfficialJamaShoglIfStale } from "@/lib/jama-shogl-payslip";
+import { persistOfficialJamaShoglSlips } from "@/lib/jama-shogl-repair";
 import { getMarketRates } from "@/lib/market-rates";
 import { computeAssetValueIls } from "@/lib/savings-asset-value";
 import { isAssetPurchaseDescription } from "@/lib/savings-contribution";
@@ -24,6 +26,8 @@ import {
   sumPaidInstallments,
 } from "@/lib/installment-transactions";
 import { contractorBudgetTotal } from "@/lib/project-completion-utils";
+import { masterBudgetFromChildren, topLevelProjectWhere } from "@/lib/project-tree";
+import { SPLIT_EXPENSES_CONTAINER_TITLE } from "@/lib/expense-installments";
 import {
   aggregateExpensesByGroup,
   findUncategorizedExpenses,
@@ -236,6 +240,7 @@ export async function getMonthlyOverview(
   year: number,
   month: number
 ) {
+  await persistOfficialJamaShoglSlips(userId, year);
   const { start, end } = monthRangeUTC(year, month);
 
   const [transactions, salarySlips, savingsPlans, savingsEntriesPaid, assetEntries] =
@@ -795,9 +800,14 @@ export async function getAnnualShowcaseData(userId: string, year: number) {
   const highestExpenseMonth =
     [...monthly].sort((a, b) => b.expenses - a.expenses)[0] ?? null;
 
-  const building = masterBuild
-    ? await getBuildingProjectSummary(userId, masterBuild.id)
-    : null;
+  let building = null;
+  if (masterBuild) {
+    try {
+      building = await getBuildingProjectSummary(userId, masterBuild.id);
+    } catch (error) {
+      console.error("[dashboard] building summary failed", error);
+    }
+  }
 
   const yearSalarySlips = salarySlips.filter(
     (s) => s.periodYear === year && s.paid && s.worked
@@ -965,7 +975,7 @@ export async function getBuildingProjectSummary(
   masterProjectId: string
 ) {
   const master = await prisma.project.findFirst({
-    where: { id: masterProjectId, userId, kind: ProjectKind.MASTER_BUILD },
+    where: { id: masterProjectId, userId, ...topLevelProjectWhere },
     include: {
       children: {
         include: {
@@ -984,7 +994,6 @@ export async function getBuildingProjectSummary(
 
   if (!master) return null;
 
-  const totalBudget = decimalToNumber(master.totalBudget);
   const childIds = master.children.map((c) => c.id);
   const allProjectIds = [master.id, ...childIds];
 
@@ -997,9 +1006,6 @@ export async function getBuildingProjectSummary(
     _sum: { amount: true },
   });
   const paidToDate = decimalToNumber(paidAgg._sum.amount);
-  const remaining = Math.max(0, totalBudget - paidToDate);
-  const percentComplete =
-    totalBudget > 0 ? Math.round((paidToDate / totalBudget) * 100) : 0;
 
   const contractors = master.children.map((child) => {
     const activePlan = child.paymentPlans[0];
@@ -1074,10 +1080,20 @@ export async function getBuildingProjectSummary(
     })
     .sort((a, b) => a.dueDate.localeCompare(b.dueDate));
 
+  const totalBudget = masterBudgetFromChildren(
+    decimalToNumber(master.totalBudget),
+    contractors.map((c) => c.totalBudget)
+  );
+  const remaining = Math.max(0, totalBudget - paidToDate);
+  const percentComplete =
+    totalBudget > 0 ? Math.round((paidToDate / totalBudget) * 100) : 0;
+
   return {
     master: {
       id: master.id,
+      kind: master.kind,
       title: master.title,
+      status: master.status,
       totalBudget,
       paidToDate,
       remaining,
@@ -1098,7 +1114,7 @@ export async function getProjectDetail(userId: string, projectId: string) {
     where: {
       id: projectId,
       userId,
-      kind: { not: ProjectKind.MASTER_BUILD },
+      parentProjectId: { not: null },
     },
     include: {
       parent: { select: { id: true, title: true } },
@@ -1252,11 +1268,35 @@ export async function getEmployerKupot(userId: string) {
   });
 
   return employers.map((emp) => {
-    const slipAmounts = emp.salarySlips.map((s) => kupotAmountsFromSlip(s));
+    const hydratedSlips = emp.salarySlips.map((s) => {
+      const hydrated = applyOfficialJamaShoglIfStale(
+        emp.name,
+        s.periodYear,
+        s.periodMonth,
+        {
+          gross: decimalToNumber(s.gross),
+          net: decimalToNumber(s.net),
+          tax: decimalToNumber(s.tax),
+          pension: decimalToNumber(s.pension),
+          kerenHishtalmut: decimalToNumber(s.kerenHishtalmut),
+          fees: decimalToNumber(s.fees),
+          bonus: decimalToNumber(s.bonus),
+          notes: s.notes,
+          slipBreakdown: s.slipBreakdown as SalarySlipBreakdown | null,
+        }
+      );
+      return {
+        ...s,
+        pension: hydrated.pension,
+        kerenHishtalmut: hydrated.kerenHishtalmut,
+        slipBreakdown: hydrated.slipBreakdown,
+      };
+    });
+    const slipAmounts = hydratedSlips.map((s) => kupotAmountsFromSlip(s));
     const totals = sumKupotAmounts(slipAmounts);
-    const latest = emp.salarySlips[emp.salarySlips.length - 1];
+    const latest = hydratedSlips[hydratedSlips.length - 1];
     const latestAmounts = latest ? kupotAmountsFromSlip(latest) : null;
-    const monthlyHistory = emp.salarySlips
+    const monthlyHistory = hydratedSlips
       .filter((s) => kupotAmountsFromSlip(s).total > 0)
       .map((s) => {
         const amounts = kupotAmountsFromSlip(s);
@@ -1338,7 +1378,8 @@ export async function getLookups(userId: string) {
     prisma.project.findMany({
       where: {
         userId,
-        kind: { in: [ProjectKind.MASTER_BUILD, ProjectKind.GENERAL] },
+        ...topLevelProjectWhere,
+        title: { not: SPLIT_EXPENSES_CONTAINER_TITLE },
       },
       orderBy: { createdAt: "desc" },
     }),
@@ -1351,7 +1392,7 @@ export async function getLookups(userId: string) {
  * Excludes the building category so daily spending stays separate from build.
  */
 export async function getQuickAddLookups(userId: string) {
-  const [categories, paymentMethods] = await Promise.all([
+  const [categories, paymentMethods, projects] = await Promise.all([
     prisma.category.findMany({
       where: {
         userId,
@@ -1367,8 +1408,13 @@ export async function getQuickAddLookups(userId: string) {
       orderBy: { name: "asc" },
       select: { id: true, name: true },
     }),
+    prisma.project.findMany({
+      where: { userId, ...topLevelProjectWhere, title: { not: SPLIT_EXPENSES_CONTAINER_TITLE } },
+      orderBy: { createdAt: "desc" },
+      select: { id: true, title: true },
+    }),
   ]);
-  return { categories, paymentMethods };
+  return { categories, paymentMethods, projects };
 }
 
 export async function listEmployers(userId: string) {
@@ -1389,6 +1435,8 @@ export async function getEmployerDetail(
   employerId: string,
   year: number
 ) {
+  await persistOfficialJamaShoglSlips(userId, year);
+
   const employer = await prisma.employer.findFirst({
     where: { id: employerId, userId },
     include: {
@@ -1437,10 +1485,20 @@ export async function getEmployerDetail(
         slipBreakdown: null as SalarySlipBreakdown | null,
       };
     }
-    const net = decimalToNumber(slip.net);
-    const fees = decimalToNumber(slip.fees);
-    const bonus = decimalToNumber(slip.bonus);
-    const breakdown = slip.slipBreakdown as SalarySlipBreakdown | null;
+    const hydrated = applyOfficialJamaShoglIfStale(employer.name, year, month, {
+      gross: decimalToNumber(slip.gross),
+      net: decimalToNumber(slip.net),
+      tax: decimalToNumber(slip.tax),
+      pension: decimalToNumber(slip.pension),
+      kerenHishtalmut: decimalToNumber(slip.kerenHishtalmut),
+      fees: decimalToNumber(slip.fees),
+      bonus: decimalToNumber(slip.bonus),
+      notes: slip.notes,
+      slipBreakdown: slip.slipBreakdown as SalarySlipBreakdown | null,
+    });
+    const net = hydrated.net;
+    const fees = hydrated.fees;
+    const bonus = hydrated.bonus;
     return {
       month,
       label: monthLabel(month),
@@ -1449,16 +1507,16 @@ export async function getEmployerDetail(
       worked: slip.worked,
       paid: slip.paid,
       paidAt: slip.paidAt?.toISOString().slice(0, 10) ?? null,
-      gross: decimalToNumber(slip.gross),
+      gross: hydrated.gross,
       net,
-      tax: decimalToNumber(slip.tax),
-      pension: decimalToNumber(slip.pension),
-      kerenHishtalmut: decimalToNumber(slip.kerenHishtalmut),
+      tax: hydrated.tax,
+      pension: hydrated.pension,
+      kerenHishtalmut: hydrated.kerenHishtalmut,
       fees,
       bonus,
-      effectiveNet: slip.worked ? net + bonus - fees : 0,
-      notes: slip.notes,
-      slipBreakdown: breakdown,
+      effectiveNet: slip.worked ? net + bonus : 0,
+      notes: hydrated.notes,
+      slipBreakdown: hydrated.slipBreakdown ?? null,
     };
   });
 
@@ -1499,7 +1557,8 @@ export async function getDashboardSummary(userId: string) {
   const projects = await prisma.project.findMany({
     where: {
       userId,
-      kind: { in: [ProjectKind.MASTER_BUILD, ProjectKind.GENERAL] },
+      ...topLevelProjectWhere,
+      title: { not: SPLIT_EXPENSES_CONTAINER_TITLE },
     },
     orderBy: { createdAt: "desc" },
   });
@@ -1528,6 +1587,9 @@ export async function listTransactions(params: {
   paymentMethodId?: string;
 }) {
   const skip = (params.page - 1) * params.pageSize;
+  if (params.year) {
+    await persistOfficialJamaShoglSlips(params.userId, params.year);
+  }
 
   let dateFilter = {};
   if (params.year && params.month) {
@@ -1617,9 +1679,10 @@ export async function listProjects(params: {
   const skip = (params.page - 1) * params.pageSize;
   const where = {
     userId: params.userId,
-    kind: { in: [ProjectKind.MASTER_BUILD, ProjectKind.GENERAL] },
+    ...topLevelProjectWhere,
+    title: { not: SPLIT_EXPENSES_CONTAINER_TITLE },
     ...(params.q
-      ? { title: { contains: params.q, mode: "insensitive" as const } }
+      ? { AND: [{ title: { contains: params.q, mode: "insensitive" as const } }] }
       : {}),
   };
 

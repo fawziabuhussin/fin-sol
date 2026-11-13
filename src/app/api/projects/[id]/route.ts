@@ -35,6 +35,9 @@ export async function PATCH(
           ? { targetDate: data.targetDate ? new Date(data.targetDate) : null }
           : {}),
         ...(data.status !== undefined ? { status: data.status } : {}),
+        ...(data.profession !== undefined
+          ? { profession: data.profession || null }
+          : {}),
       },
     });
 

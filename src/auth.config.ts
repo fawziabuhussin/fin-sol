@@ -5,6 +5,7 @@ export const PROTECTED_PAGE_PREFIXES = [
   "/dashboard",
   "/transactions",
   "/subscriptions",
+  "/splits",
   "/projects",
   "/savings",
   "/salary",

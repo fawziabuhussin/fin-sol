@@ -12,6 +12,7 @@ export const config = {
     "/transactions/:path*",
     "/subscriptions/:path*",
     "/projects/:path*",
+    "/splits/:path*",
     "/savings/:path*",
     "/salary/:path*",
     "/showcase/:path*",
