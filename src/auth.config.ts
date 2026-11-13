@@ -1,5 +1,28 @@
 import type { NextAuthConfig } from "next-auth";
 
+/** App pages that require a signed-in user. */
+export const PROTECTED_PAGE_PREFIXES = [
+  "/dashboard",
+  "/transactions",
+  "/subscriptions",
+  "/projects",
+  "/savings",
+  "/salary",
+  "/showcase",
+  "/settings",
+  "/search",
+];
+
+/** Every API route except Auth.js itself and public sign-up. */
+const PUBLIC_API_PREFIXES = ["/api/auth/"];
+
+function isProtectedPath(path: string) {
+  if (path.startsWith("/api/")) {
+    return !PUBLIC_API_PREFIXES.some((p) => path.startsWith(p));
+  }
+  return PROTECTED_PAGE_PREFIXES.some((p) => path === p || path.startsWith(`${p}/`));
+}
+
 export const authConfig = {
   pages: {
     signIn: "/login",
@@ -9,23 +32,14 @@ export const authConfig = {
     authorized({ auth, request }) {
       const isLoggedIn = !!auth?.user;
       const path = request.nextUrl.pathname;
-      const isProtected =
-        path.startsWith("/dashboard") ||
-        path.startsWith("/transactions") ||
-        path.startsWith("/projects") ||
-        path.startsWith("/savings") ||
-        path.startsWith("/salary") ||
-        path.startsWith("/settings") ||
-        path.startsWith("/search") ||
-        path.startsWith("/api/transactions") ||
-        path.startsWith("/api/projects") ||
-        path.startsWith("/api/quick-add") ||
-        path.startsWith("/api/savings") ||
-        path.startsWith("/api/salary");
-      const isAuthPage =
-        path.startsWith("/login") || path.startsWith("/register");
+      const isAuthPage = path.startsWith("/login") || path.startsWith("/register");
 
-      if (isProtected && !isLoggedIn) return false;
+      if (isProtectedPath(path) && !isLoggedIn) {
+        if (path.startsWith("/api/")) {
+          return Response.json({ error: "Unauthorized" }, { status: 401 });
+        }
+        return false;
+      }
       if (isAuthPage && isLoggedIn) {
         return Response.redirect(new URL("/dashboard", request.nextUrl));
       }

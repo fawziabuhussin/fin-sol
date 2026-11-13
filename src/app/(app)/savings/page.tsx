@@ -4,6 +4,7 @@ import { decimalToNumber } from "@/lib/utils";
 import { SavingsPageClient } from "@/components/pages/savings-page-client";
 import { SavingsSummary } from "@/components/pages/savings-summary";
 import { SavingsTabs } from "@/components/savings/savings-tabs";
+import { PageHeader } from "@/components/app-shell/page-header";
 
 export default async function SavingsPage() {
   const user = await requireUser();
@@ -15,12 +16,10 @@ export default async function SavingsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-extrabold">الجمعية والادخار</h1>
-        <p className="mt-1 text-sm text-slate-500">
-          جمعيات، ذهب، دولار، فضة، عملات رقمية، وأصول مخصّصة
-        </p>
-      </div>
+      <PageHeader
+        title="الجمعية والادخار"
+        description="جمعيات، ذهب، دولار، فضة، عملات رقمية، وأصول مخصّصة — بقيمتها الحالية."
+      />
 
       <SavingsTabs />
 

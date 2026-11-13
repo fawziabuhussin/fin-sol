@@ -14,6 +14,16 @@ export function formatCurrency(amount: number | string, currency = "ILS") {
   }).format(Number.isNaN(value) ? 0 : value);
 }
 
+/** Like formatCurrency but keeps agorot (e.g. ₪69.90 subscriptions). */
+export function formatCurrencyPrecise(amount: number, currency = "ILS") {
+  return new Intl.NumberFormat("he-IL", {
+    style: "currency",
+    currency,
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  }).format(Number.isFinite(amount) ? amount : 0);
+}
+
 export function parseMoney(value: unknown): number {
   if (value == null) return 0;
   if (typeof value === "number") return Number.isFinite(value) ? value : 0;

@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/session";
+import { assertOwnedRefs } from "@/lib/security/owned-refs";
+import { handleApiError } from "@/lib/api-error";
 import { savingsSchema } from "@/lib/validations/savings";
 
 export async function POST(req: Request) {
@@ -13,6 +15,7 @@ export async function POST(req: Request) {
     }
 
     const data = parsed.data;
+    await assertOwnedRefs(user.id, { employerId: data.employerId });
     const created = await prisma.savingsPlan.create({
       data: {
         userId: user.id,
@@ -30,7 +33,7 @@ export async function POST(req: Request) {
     });
 
     return NextResponse.json(created, { status: 201 });
-  } catch {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  } catch (error) {
+    return handleApiError(error);
   }
 }

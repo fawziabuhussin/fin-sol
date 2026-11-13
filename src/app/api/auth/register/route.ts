@@ -1,45 +1,48 @@
 import { NextResponse } from "next/server";
-import bcrypt from "bcryptjs";
+import { z } from "zod";
 import { prisma } from "@/lib/db";
+import { emailSchema, hashPassword, passwordSchema } from "@/lib/security/password";
+import { MINUTE, clientIp, consumeRateLimit } from "@/lib/security/rate-limit";
+import { createStarterCategories } from "@/lib/starter-categories";
+
+const registerSchema = z.object({
+  name: z.string().trim().min(1, "الاسم مطلوب").max(80),
+  email: emailSchema,
+  password: passwordSchema,
+});
 
 export async function POST(req: Request) {
   try {
-    const body = (await req.json()) as {
-      name?: string;
-      email?: string;
-      password?: string;
-    };
-
-    if (!body.email || !body.password || body.password.length < 6) {
-      return NextResponse.json({ error: "بيانات غير صالحة" }, { status: 400 });
+    if (await consumeRateLimit(`register:ip:${clientIp(req)}`, 10, 60 * MINUTE)) {
+      return NextResponse.json(
+        { error: "محاولات كثيرة — حاول مرة أخرى بعد قليل" },
+        { status: 429 }
+      );
     }
 
-    const exists = await prisma.user.findUnique({ where: { email: body.email } });
+    const parsed = registerSchema.safeParse(await req.json().catch(() => null));
+    if (!parsed.success) {
+      const first = parsed.error.issues[0]?.message ?? "بيانات غير صالحة";
+      return NextResponse.json({ error: first }, { status: 400 });
+    }
+    const { name, email, password } = parsed.data;
+
+    const exists = await prisma.user.findFirst({
+      where: { email: { equals: email, mode: "insensitive" } },
+      select: { id: true },
+    });
     if (exists) {
       return NextResponse.json({ error: "البريد مستخدم مسبقاً" }, { status: 409 });
     }
 
-    const passwordHash = await bcrypt.hash(body.password, 10);
     const user = await prisma.user.create({
-      data: {
-        name: body.name ?? null,
-        email: body.email,
-        passwordHash,
-      },
+      data: { name, email, passwordHash: await hashPassword(password) },
     });
-
-    const [expense, income, savings] = await Promise.all([
-      prisma.category.create({ data: { userId: user.id, name: "مصروفات", kind: "EXPENSE", sortOrder: 1 } }),
-      prisma.category.create({ data: { userId: user.id, name: "دخل", kind: "INCOME", sortOrder: 2 } }),
-      prisma.category.create({ data: { userId: user.id, name: "ادخار", kind: "SAVINGS", sortOrder: 3 } }),
-    ]);
-
-    void expense;
-    void income;
-    void savings;
+    await createStarterCategories(user.id, prisma);
 
     return NextResponse.json({ ok: true }, { status: 201 });
-  } catch {
+  } catch (error) {
+    console.error("[register] failed:", error);
     return NextResponse.json({ error: "فشل التسجيل" }, { status: 500 });
   }
 }

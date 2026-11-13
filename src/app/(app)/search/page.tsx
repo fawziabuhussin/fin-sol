@@ -2,6 +2,9 @@ import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/session";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { PageHeader } from "@/components/app-shell/page-header";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 
 export default async function SearchPage({
   searchParams,
@@ -34,7 +37,21 @@ export default async function SearchPage({
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-slate-900">نتائج البحث: {q || "..."}</h1>
+      <PageHeader
+        title={q ? `نتائج البحث عن «${q}»` : "البحث"}
+        description="ابحث في المشاريع ووصف المعاملات وملاحظاتها."
+      />
+      <form action="/search" role="search" className="flex gap-2">
+        <Input
+          name="q"
+          type="search"
+          defaultValue={q}
+          placeholder="مثال: سوبرماركت، إيجار، Netflix…"
+          aria-label="كلمة البحث"
+          className="h-11 flex-1"
+        />
+        <Button type="submit" className="h-11">بحث</Button>
+      </form>
       <Card>
         <CardHeader>
           <CardTitle>المشاريع</CardTitle>

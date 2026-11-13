@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/session";
+import { handleApiError } from "@/lib/api-error";
 import { InstallmentStatus, TransactionType } from "@/generated/prisma/client";
 
 export async function PATCH(
@@ -50,7 +51,7 @@ export async function PATCH(
     });
 
     return NextResponse.json({ installment: updated, transaction: tx });
-  } catch {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  } catch (error) {
+    return handleApiError(error);
   }
 }

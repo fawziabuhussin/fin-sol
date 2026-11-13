@@ -1,34 +1,76 @@
 @import "tailwindcss";
 
+/*
+ * Fin$ol design tokens
+ * Calm neutral canvas, white surfaces, deep ink text, indigo brand accent.
+ * Semantic money colors: emerald = income, rose = expense, amber = attention.
+ */
 :root {
-  --background: #f8fafc;
-  --foreground: #0f172a;
-  --primary-action: #0f172a;
+  --background: #f5f6f8;
+  --surface: #ffffff;
+  --foreground: #0b1220;
+  --muted: #5b6475;
+  --hairline: #e6e8ee;
+  --brand: #4f46e5;
+  --brand-strong: #4338ca;
+  --primary-action: #0b1220;
   --income-success: #059669;
   --expense-warning: #e11d48;
 }
 
 @theme inline {
   --color-background: var(--background);
+  --color-surface: var(--surface);
   --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-hairline: var(--hairline);
+  --color-brand: var(--brand);
+  --color-brand-strong: var(--brand-strong);
+  --color-ink: var(--foreground);
   --color-primary-action: var(--primary-action);
   --color-income-success: var(--income-success);
   --color-expense-warning: var(--expense-warning);
-  --font-sans: var(--font-tajawal);
+  --font-sans: var(--font-plex), ui-sans-serif, system-ui, sans-serif;
+  --shadow-card: 0 1px 2px rgb(16 24 40 / 0.04), 0 1px 3px rgb(16 24 40 / 0.04);
+  --shadow-float: 0 12px 32px -12px rgb(16 24 40 / 0.18), 0 2px 6px rgb(16 24 40 / 0.06);
 }
 
-* {
-  border-color: rgb(241 245 249);
+/* In a layer so Tailwind utilities (e.g. outline-none, border-*) still win. */
+@layer base {
+  * {
+    border-color: var(--hairline);
+  }
+
+  html {
+    -webkit-tap-highlight-color: transparent;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    background: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    font-feature-settings: "kern";
+  }
+
+  ::selection {
+    background: rgb(79 70 229 / 0.16);
+  }
+
+  :focus-visible {
+    outline: 2px solid rgb(79 70 229 / 0.55);
+    outline-offset: 2px;
+  }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-sans), sans-serif;
+/* Money should line up in columns. */
+.num {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
 }
 
 .app-card {
-  @apply rounded-2xl border border-slate-100 bg-white shadow-sm transition-all hover:shadow-md;
+  @apply rounded-2xl border border-hairline bg-white shadow-card;
 }
 
 .glass-panel {
@@ -36,17 +78,58 @@ body {
 }
 
 .card-3d {
-  transform-style: preserve-3d;
-  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
 }
 
 .card-3d:hover {
-  transform: translateY(-2px) rotateX(2deg);
-  box-shadow: 0 20px 40px -20px rgb(15 23 42 / 0.15);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-float);
 }
 
-@supports (padding-bottom: env(safe-area-inset-bottom)) {
-  footer {
-    padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+/* Motion primitives for Radix overlays (data-state driven). */
+@keyframes fs-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes fs-slide-from-left {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(0); }
+}
+@keyframes fs-slide-from-right {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+@keyframes fs-slide-from-bottom {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+@keyframes fs-pop-in {
+  /* Tailwind v4 centers with the standalone `translate` property, so only scale here. */
+  from { opacity: 0; transform: scale(0.97); }
+  to { opacity: 1; transform: scale(1); }
+}
+@keyframes fs-menu-in {
+  from { opacity: 0; transform: translateY(-4px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.anim-fade[data-state="open"] { animation: fs-fade-in 160ms ease-out; }
+.anim-sheet-left[data-state="open"] { animation: fs-slide-from-left 260ms cubic-bezier(0.32, 0.72, 0, 1); }
+.anim-sheet-right[data-state="open"] { animation: fs-slide-from-right 260ms cubic-bezier(0.32, 0.72, 0, 1); }
+.anim-sheet-bottom[data-state="open"] { animation: fs-slide-from-bottom 280ms cubic-bezier(0.32, 0.72, 0, 1); }
+.anim-dialog[data-state="open"] { animation: fs-pop-in 180ms cubic-bezier(0.16, 1, 0.3, 1); }
+.anim-menu[data-state="open"] { animation: fs-menu-in 140ms ease-out; }
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
   }
+}
+
+/* Native-shell safe areas */
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
 }

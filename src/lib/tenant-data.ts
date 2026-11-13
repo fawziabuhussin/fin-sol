@@ -1236,64 +1236,6 @@ export async function getProjectDetail(userId: string, projectId: string) {
   };
 }
 
-export async function getSubscriptionsMonthly(
-  userId: string,
-  year: number,
-  month: number
-) {
-  const subscriptions = await prisma.subscription.findMany({
-    where: { userId, isActive: true },
-    orderBy: { title: "asc" },
-    include: {
-      payments: {
-        where: { periodYear: year, periodMonth: month },
-      },
-      monthSkips: {
-        where: { periodYear: year, periodMonth: month },
-      },
-      category: true,
-      paymentMethod: true,
-    },
-  });
-
-  const visible = subscriptions.filter((sub) => sub.monthSkips.length === 0);
-
-  const items = visible.map((sub) => {
-    const payment = sub.payments[0] ?? null;
-    return {
-      id: sub.id,
-      title: sub.title,
-      amount: decimalToNumber(sub.amount),
-      billingDay: sub.billingDay,
-      categoryName: sub.category?.name ?? "اشتراكات",
-      paymentMethodName: sub.paymentMethod?.name ?? null,
-      notes: sub.notes,
-      isDefault: sub.isDefault,
-      paid: payment?.paid ?? false,
-      paidAt: payment?.paidAt?.toISOString().slice(0, 10) ?? null,
-      paymentId: payment?.id ?? null,
-      transactionId: payment?.transactionId ?? null,
-    };
-  });
-
-  const totalDue = items.reduce((sum, i) => sum + i.amount, 0);
-  const totalPaid = items
-    .filter((i) => i.paid)
-    .reduce((sum, i) => sum + i.amount, 0);
-
-  return {
-    year,
-    month,
-    monthLabel: monthLabel(month),
-    items,
-    totalDue,
-    totalPaid,
-    totalRemaining: totalDue - totalPaid,
-    paidCount: items.filter((i) => i.paid).length,
-    totalCount: items.length,
-  };
-}
-
 export async function getEmployerKupot(userId: string) {
   const employers = await prisma.employer.findMany({
     where: { userId, active: true },

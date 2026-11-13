@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/session";
+import { assertOwnedRefs } from "@/lib/security/owned-refs";
 import { handleApiError } from "@/lib/api-error";
 import { paymentPlanSchema } from "@/lib/validations/payment-plan";
 import { buildInstallmentSchedule } from "@/lib/payment-plan";
@@ -28,6 +29,7 @@ export async function POST(
     }
 
     const data = parsed.data;
+    await assertOwnedRefs(user.id, { paymentMethodId: data.paymentMethodId });
     const recurring =
       data.mode === PaymentPlanMode.INSTALLMENTS && data.installmentCount
         ? Math.round(

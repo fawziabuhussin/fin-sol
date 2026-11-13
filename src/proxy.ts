@@ -10,17 +10,16 @@ export const config = {
   matcher: [
     "/dashboard/:path*",
     "/transactions/:path*",
+    "/subscriptions/:path*",
     "/projects/:path*",
     "/savings/:path*",
     "/salary/:path*",
+    "/showcase/:path*",
     "/settings/:path*",
     "/search/:path*",
     "/login",
     "/register",
-    "/api/transactions/:path*",
-    "/api/projects/:path*",
-    "/api/quick-add/:path*",
-    "/api/savings/:path*",
-    "/api/salary/:path*",
+    // All API routes except Auth.js handlers (sign-in, session, register).
+    "/api/((?!auth/).*)",
   ],
 };

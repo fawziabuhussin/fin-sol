@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/session";
+import { assertOwnedRefs } from "@/lib/security/owned-refs";
+import { handleApiError } from "@/lib/api-error";
 import { transactionSchema } from "@/lib/validations/transactions";
 import { projectSchema } from "@/lib/validations/projects";
 import { savingsAssetPurchaseSchema } from "@/lib/validations/savings";
@@ -133,6 +135,7 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
       }
       const d = parsed.data;
+      await assertOwnedRefs(user.id, d);
       const item = await prisma.transaction.create({
         data: {
           userId: user.id,
@@ -168,7 +171,7 @@ export async function POST(req: Request) {
       },
     });
     return NextResponse.json(item, { status: 201 });
-  } catch {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  } catch (error) {
+    return handleApiError(error);
   }
 }

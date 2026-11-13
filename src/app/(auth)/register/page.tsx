@@ -4,11 +4,12 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { signIn } from "next-auth/react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ArrowLeft } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Logo } from "@/components/brand/logo";
+import { AuthShell } from "@/components/auth/auth-shell";
+import { PasswordInput, PasswordStrength, passwordScore } from "@/components/auth/password-field";
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -17,61 +18,106 @@ export default function RegisterPage() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const { meetsPolicy } = passwordScore(password);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!meetsPolicy) {
+      setError("كلمة المرور يجب أن تكون 8 أحرف على الأقل وتتضمن حروفاً وأرقاماً.");
+      return;
+    }
     setLoading(true);
     setError("");
 
     const response = await fetch("/api/auth/register", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, email, password }),
+      body: JSON.stringify({ name: name.trim(), email: email.trim(), password }),
     });
 
     if (!response.ok) {
-      const body = await response.json();
-      setError(body.error ?? "فشل إنشاء الحساب");
+      const body = await response.json().catch(() => ({}));
+      setError(body.error ?? "تعذّر إنشاء الحساب");
       setLoading(false);
       return;
     }
 
-    await signIn("credentials", { email, password, redirect: false });
+    await signIn("credentials", { email: email.trim(), password, redirect: false });
     router.push("/dashboard");
     router.refresh();
   }
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center gap-6 px-4">
-      <Logo className="flex-col text-center" markClassName="h-12 w-12" />
-      <Card className="w-full max-w-md">
-        <CardHeader>
-          <CardTitle className="text-center">إنشاء حساب</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <form className="space-y-4" onSubmit={onSubmit}>
-            <div>
-              <Label>الاسم</Label>
-              <Input value={name} onChange={(e) => setName(e.target.value)} required />
-            </div>
-            <div>
-              <Label>البريد الإلكتروني</Label>
-              <Input value={email} onChange={(e) => setEmail(e.target.value)} type="email" required />
-            </div>
-            <div>
-              <Label>كلمة المرور</Label>
-              <Input value={password} onChange={(e) => setPassword(e.target.value)} type="password" minLength={6} required />
-            </div>
-            {error && <p className="text-sm text-rose-600">{error}</p>}
-            <Button disabled={loading} className="w-full" type="submit">
-              {loading ? "جاري الإنشاء..." : "إنشاء الحساب"}
-            </Button>
-          </form>
-          <p className="mt-4 text-center text-sm text-slate-500">
-            لديك حساب؟ <Link href="/login" className="text-slate-900 underline">دخول</Link>
+    <AuthShell
+      title="أنشئ حسابك"
+      subtitle="دقيقة واحدة وتبدأ بمتابعة أموالك."
+      footer={
+        <>
+          لديك حساب بالفعل؟{" "}
+          <Link href="/login" className="font-semibold text-indigo-600 hover:text-indigo-800">
+            سجّل الدخول
+          </Link>
+        </>
+      }
+    >
+      <form className="space-y-5" onSubmit={onSubmit} noValidate>
+        <div>
+          <Label htmlFor="name">الاسم</Label>
+          <Input
+            id="name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            autoComplete="name"
+            className="h-11"
+            maxLength={80}
+            required
+          />
+        </div>
+        <div>
+          <Label htmlFor="email">البريد الإلكتروني</Label>
+          <Input
+            id="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            type="email"
+            autoComplete="email"
+            inputMode="email"
+            dir="ltr"
+            className="h-11 text-right"
+            placeholder="name@example.com"
+            required
+          />
+        </div>
+        <div>
+          <Label htmlFor="password">كلمة المرور</Label>
+          <PasswordInput
+            id="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            autoComplete="new-password"
+            className="h-11"
+            required
+          />
+          <PasswordStrength password={password} />
+        </div>
+        {error && (
+          <p role="alert" className="rounded-xl border border-rose-100 bg-rose-50 px-3 py-2.5 text-sm text-rose-700">
+            {error}
           </p>
-        </CardContent>
-      </Card>
-    </div>
+        )}
+        <Button
+          disabled={loading || !name.trim() || !email || !password}
+          className="h-11 w-full"
+          variant="brand"
+          type="submit"
+        >
+          {loading ? "جارٍ إنشاء الحساب…" : (
+            <>
+              إنشاء الحساب <ArrowLeft className="h-4 w-4" />
+            </>
+          )}
+        </Button>
+      </form>
+    </AuthShell>
   );
 }

@@ -545,7 +545,7 @@ export function TransactionsPageClient({
               <Select
                 value={String(filters.year)}
                 onChange={(e) => apply({ year: Number(e.target.value) })}
-                className="h-8 w-[4.25rem] shrink-0 border-0 border-s border-slate-200 bg-transparent py-0 pe-5 ps-2 text-sm font-bold text-slate-800 focus-visible:ring-0"
+                className="h-8 w-[5.25rem] shrink-0 border-0 border-s border-slate-200 bg-transparent py-0 pe-7 ps-2 text-sm font-bold text-slate-800 focus-visible:ring-0"
                 aria-label="اختر السنة"
               >
                 {yearOptions.map((y) => (

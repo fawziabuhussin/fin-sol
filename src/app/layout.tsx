@@ -1,12 +1,13 @@
 import type { Metadata, Viewport } from "next";
-import { Tajawal } from "next/font/google";
+import { IBM_Plex_Sans_Arabic } from "next/font/google";
 import { NativeShell } from "@/components/capacitor/native-shell";
 import "./globals.css";
 
-const tajawal = Tajawal({
-  variable: "--font-tajawal",
+const plex = IBM_Plex_Sans_Arabic({
+  variable: "--font-plex",
   subsets: ["arabic", "latin"],
-  weight: ["400", "500", "700", "800"],
+  weight: ["400", "500", "600", "700"],
+  display: "swap",
 });
 
 export const metadata: Metadata = {
@@ -14,7 +15,8 @@ export const metadata: Metadata = {
     default: "Fin$ol — المالية الذكية",
     template: "%s | Fin$ol",
   },
-  description: "منصة مالية ذكية لإدارة الدخل والمصروفات والادخار والراتب",
+  description:
+    "تابع دخلك ومصروفاتك واشتراكاتك وادخارك في مكان واحد — واضح، آمن، وبالعربية.",
   applicationName: "Fin$ol",
   appleWebApp: {
     capable: true,
@@ -40,8 +42,8 @@ export const viewport: Viewport = {
   maximumScale: 1,
   viewportFit: "cover",
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#4F46E5" },
-    { media: "(prefers-color-scheme: dark)", color: "#312E81" },
+    { media: "(prefers-color-scheme: light)", color: "#F5F6F8" },
+    { media: "(prefers-color-scheme: dark)", color: "#0B1220" },
   ],
 };
 
@@ -51,8 +53,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="ar" dir="rtl" className={`${tajawal.variable} h-full antialiased`}>
-      <body className="min-h-full overflow-x-hidden bg-[#F8FAFC] text-slate-900">
+    <html lang="ar" dir="rtl" className={`${plex.variable} h-full antialiased`}>
+      <body className="min-h-full overflow-x-hidden bg-background text-foreground">
         <NativeShell />
         {children}
       </body>

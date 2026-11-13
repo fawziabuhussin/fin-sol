@@ -1,8 +1,23 @@
+import type { Metadata } from "next";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/session";
 import { seedDefaultSubscriptions } from "@/lib/subscription-seed";
-import { getLookups, getSubscriptionsMonthly } from "@/lib/tenant-data";
+import { getLookups } from "@/lib/tenant-data";
+import { getSubscriptionsOverview } from "@/lib/subscriptions-data";
+import { isOwnerEmail } from "@/lib/security/owner";
 import { SubscriptionsPageClient } from "@/components/pages/subscriptions-page-client";
+
+export const metadata: Metadata = { title: "الاشتراكات" };
+
+function parsePeriod(params: { year?: string; month?: string }) {
+  const now = new Date();
+  const year = Number(params.year);
+  const month = Number(params.month);
+  return {
+    year: Number.isInteger(year) && year >= 2000 && year <= 2100 ? year : now.getFullYear(),
+    month: Number.isInteger(month) && month >= 1 && month <= 12 ? month : now.getMonth() + 1,
+  };
+}
 
 export default async function SubscriptionsPage({
   searchParams,
@@ -10,35 +25,29 @@ export default async function SubscriptionsPage({
   searchParams: Promise<{ year?: string; month?: string }>;
 }) {
   const user = await requireUser();
-  const params = await searchParams;
-  const now = new Date();
-  const year = params.year ? Number(params.year) : now.getFullYear();
-  const month = params.month ? Number(params.month) : now.getMonth() + 1;
+  const { year, month } = parsePeriod(await searchParams);
+  const isOwner = isOwnerEmail(user.email);
 
-  const subCount = await prisma.subscription.count({
-    where: { userId: user.id },
-  });
-  if (subCount === 0) {
-    await seedDefaultSubscriptions(user.id, prisma);
+  // The built-in list is the original owner's personal subscriptions — never
+  // seed it into anyone else's account.
+  if (isOwner) {
+    const count = await prisma.subscription.count({ where: { userId: user.id } });
+    if (count === 0) await seedDefaultSubscriptions(user.id, prisma);
   }
 
   const [data, lookups] = await Promise.all([
-    getSubscriptionsMonthly(user.id, year, month),
+    getSubscriptionsOverview(user.id, year, month),
     getLookups(user.id),
   ]);
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-extrabold">الاشتراكات الشهرية</h1>
-        <p className="mt-1 text-sm text-slate-500">
-          اشتراكات متكررة — اضغط ✓ عند الدفع لإضافتها للمصروفات
-        </p>
-      </div>
-      <SubscriptionsPageClient
-        data={data}
-        paymentMethods={lookups.paymentMethods}
-      />
-    </div>
+    <SubscriptionsPageClient
+      data={data}
+      paymentMethods={lookups.paymentMethods.map((m) => ({ id: m.id, name: m.name }))}
+      categories={lookups.categories
+        .filter((c) => c.kind === "EXPENSE")
+        .map((c) => ({ id: c.id, name: c.name }))}
+      canImport={isOwner}
+    />
   );
 }

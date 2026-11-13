@@ -4,7 +4,13 @@ import * as React from "react";
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import { cn } from "@/lib/utils";
 
-const DropdownMenu = DropdownMenuPrimitive.Root;
+/** Radix menus default to LTR; the app is RTL, so default `dir` accordingly. */
+function DropdownMenu({
+  dir = "rtl",
+  ...props
+}: React.ComponentProps<typeof DropdownMenuPrimitive.Root>) {
+  return <DropdownMenuPrimitive.Root dir={dir} {...props} />;
+}
 const DropdownMenuTrigger = DropdownMenuPrimitive.Trigger;
 const DropdownMenuContent = React.forwardRef<
   React.ElementRef<typeof DropdownMenuPrimitive.Content>,
@@ -15,7 +21,7 @@ const DropdownMenuContent = React.forwardRef<
       ref={ref}
       sideOffset={sideOffset}
       className={cn(
-        "z-50 min-w-40 rounded-xl border border-slate-200 bg-white p-1 shadow-lg",
+        "anim-menu z-50 min-w-44 rounded-xl border border-slate-200 bg-white p-1 shadow-float",
         className
       )}
       {...props}
@@ -31,7 +37,7 @@ const DropdownMenuItem = React.forwardRef<
   <DropdownMenuPrimitive.Item
     ref={ref}
     className={cn(
-      "cursor-pointer rounded-lg px-3 py-2 text-sm text-slate-700 outline-none hover:bg-slate-100",
+      "flex cursor-pointer select-none items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-700 outline-none transition-colors data-[highlighted]:bg-slate-100 data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&_svg]:h-4 [&_svg]:w-4 [&_svg]:text-slate-400",
       className
     )}
     {...props}
@@ -51,7 +57,12 @@ const DropdownMenuSeparator = React.forwardRef<
 ));
 DropdownMenuSeparator.displayName = DropdownMenuPrimitive.Separator.displayName;
 
+const DropdownMenuLabel = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
+  <div className={cn("px-3 pb-1 pt-2 text-xs font-medium text-slate-400", className)} {...props} />
+);
+
 export {
+  DropdownMenuLabel,
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,

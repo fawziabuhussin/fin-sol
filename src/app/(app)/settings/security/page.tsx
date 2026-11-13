@@ -1,14 +1,6 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { redirect } from "next/navigation";
 
-export default function SecuritySettingsPage() {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>الأمان</CardTitle>
-      </CardHeader>
-      <CardContent className="text-sm text-slate-600">
-        تحديث كلمة المرور وتفعيل 2FA ستكون ضمن المرحلة القادمة.
-      </CardContent>
-    </Card>
-  );
+/** Settings now live on one page; keep old links working. */
+export default function Page() {
+  redirect("/settings#security");
 }

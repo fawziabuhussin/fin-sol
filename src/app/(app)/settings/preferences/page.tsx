@@ -1,14 +1,6 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { redirect } from "next/navigation";
 
-export default function PreferencesSettingsPage() {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>التفضيلات</CardTitle>
-      </CardHeader>
-      <CardContent className="text-sm text-slate-600">
-        اللغة الافتراضية RTL والعملة ILS يمكن تخصيصهما لاحقاً.
-      </CardContent>
-    </Card>
-  );
+/** Settings now live on one page; keep old links working. */
+export default function Page() {
+  redirect("/settings#profile");
 }

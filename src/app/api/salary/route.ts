@@ -5,6 +5,7 @@ import { handleApiError } from "@/lib/api-error";
 import { salarySchema } from "@/lib/validations/salary";
 import { syncSalarySlipIncome } from "@/lib/salary-income-sync";
 import { resolveEmployerPaidSlip } from "@/lib/employer-paid-slip";
+import { isOwnerEmail } from "@/lib/security/owner";
 
 export async function POST(req: Request) {
   try {
@@ -24,7 +25,8 @@ export async function POST(req: Request) {
     }
 
     let slip = { ...data };
-    if (data.paid) {
+    // Hard-coded payslip templates belong to the original owner only.
+    if (data.paid && isOwnerEmail(user.email)) {
       const template = resolveEmployerPaidSlip(
         employer.name,
         data.periodYear,

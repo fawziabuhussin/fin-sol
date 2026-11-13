@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/session";
+import { assertOwnedRefs } from "@/lib/security/owned-refs";
 import { handleApiError } from "@/lib/api-error";
 import { syncLinkedInstallmentTransaction } from "@/lib/installment-transactions";
 import {
@@ -58,6 +59,7 @@ export async function PATCH(
       if (!catParsed.success) {
         return NextResponse.json({ error: catParsed.error.flatten() }, { status: 400 });
       }
+      await assertOwnedRefs(user.id, catParsed.data);
       const updated = await prisma.transaction.update({
         where: { id },
         data: { categoryId: catParsed.data.categoryId },
@@ -75,6 +77,7 @@ export async function PATCH(
     }
 
     const data = parsed.data;
+    await assertOwnedRefs(user.id, data);
 
     const linkedInstallment = await prisma.projectInstallment.findFirst({
       where: { transactionId: id },

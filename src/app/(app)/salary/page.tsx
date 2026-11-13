@@ -2,6 +2,7 @@ import { requireUser } from "@/lib/session";
 import { listEmployers, listSalary } from "@/lib/tenant-data";
 import { decimalToNumber } from "@/lib/utils";
 import { SalaryPageClient } from "@/components/pages/salary-page-client";
+import { PageHeader } from "@/components/app-shell/page-header";
 
 export default async function SalaryPage() {
   const user = await requireUser();
@@ -35,7 +36,10 @@ export default async function SalaryPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-extrabold">متابعة الراتب</h1>
+      <PageHeader
+        title="متابعة الراتب"
+        description="قسائم الرواتب لكل جهة عمل — الإجمالي، الصافي، الضرائب والتقاعد."
+      />
       <SalaryPageClient
         employers={employerStats}
         recentSlips={slips.slice(0, 20).map((s) => ({

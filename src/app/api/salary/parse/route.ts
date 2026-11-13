@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/session";
+import { handleApiError } from "@/lib/api-error";
 import { extractTextFromFile, parsePayslipText } from "@/lib/payslip-parser";
 
 export const runtime = "nodejs";
+
+const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 
 export async function POST(req: Request) {
   try {
@@ -11,6 +14,9 @@ export async function POST(req: Request) {
     const file = form.get("file");
     if (!(file instanceof File)) {
       return NextResponse.json({ error: "No file" }, { status: 400 });
+    }
+    if (file.size > MAX_UPLOAD_BYTES) {
+      return NextResponse.json({ error: "File too large (max 10MB)" }, { status: 413 });
     }
 
     const text = await extractTextFromFile(file);
@@ -29,7 +35,7 @@ export async function POST(req: Request) {
       confidence: parsed.confidence,
       fileName: file.name,
     });
-  } catch {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  } catch (error) {
+    return handleApiError(error);
   }
 }

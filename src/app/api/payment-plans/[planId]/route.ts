@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/session";
+import { assertOwnedRefs } from "@/lib/security/owned-refs";
 import { handleApiError } from "@/lib/api-error";
 import { planEditSchema } from "@/lib/validations/payment-plan";
 import {
@@ -32,6 +33,7 @@ export async function PATCH(
       return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
     }
     const d = parsed.data;
+    await assertOwnedRefs(user.id, { paymentMethodId: d.paymentMethodId });
 
     const mode = (d.mode ?? plan.mode) as PaymentPlanMode;
     const totalAmount = d.totalAmount ?? Number(plan.totalAmount);

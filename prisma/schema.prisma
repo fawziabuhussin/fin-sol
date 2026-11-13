@@ -15,6 +15,8 @@ model User {
   image         String?
   passwordHash  String?
   locale        String   @default("ar")
+  /// Bumped on password change / "sign out everywhere" to invalidate existing JWTs.
+  tokenVersion  Int      @default(0)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -60,6 +62,15 @@ model Session {
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+}
+
+/// Sliding-window rate limiting for auth endpoints (works across serverless instances).
+model RateLimitHit {
+  id        String   @id @default(cuid())
+  key       String
+  createdAt DateTime @default(now())
+
+  @@index([key, createdAt])
 }
 
 model VerificationToken {
@@ -202,12 +213,24 @@ model PaymentMethod {
   @@unique([userId, name])
 }
 
+enum BillingCycle {
+  MONTHLY
+  YEARLY
+}
+
 model Subscription {
   id                String   @id @default(cuid())
   userId            String
   title             String
   amount            Decimal  @db.Decimal(14, 2)
   billingDay        Int?
+  billingCycle      BillingCycle @default(MONTHLY)
+  /// For YEARLY subscriptions: the month (1-12) the renewal is charged.
+  billingMonth      Int?
+  /// First month the subscription appears (null = always).
+  startDate         DateTime? @db.Date
+  /// Last month the subscription appears — set when cancelled (null = ongoing).
+  endDate           DateTime? @db.Date
   categoryId        String?
   paymentMethodId   String?
   notes             String?
