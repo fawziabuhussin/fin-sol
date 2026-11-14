@@ -14,6 +14,9 @@ import {
 /** Cookie holding the desktop sidebar's collapsed state (read on the server). */
 export const SIDEBAR_COOKIE = "finsol_sidebar";
 
+/** Window event that opens the global Quick Add sheet. */
+export const QUICK_ADD_EVENT = "finsol:quick-add";
+
 export type NavItem = {
   href: string;
   label: string;

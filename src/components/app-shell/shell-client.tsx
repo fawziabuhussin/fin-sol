@@ -1,11 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AppSidebar } from "@/components/app-shell/sidebar";
 import { TopHeader } from "@/components/app-shell/top-header";
 import { MobileBottomNav } from "@/components/app-shell/mobile-bottom-nav";
 import { QuickAddSheet, type QuickAddLookups } from "@/components/app-shell/quick-add-sheet";
-import { SIDEBAR_COOKIE } from "@/components/app-shell/nav-config";
+import { QUICK_ADD_EVENT, SIDEBAR_COOKIE } from "@/components/app-shell/nav-config";
 
 export function ShellClient({
   children,
@@ -22,6 +22,13 @@ export function ShellClient({
 }) {
   const [collapsed, setCollapsed] = useState(initialCollapsed);
   const [quickAddOpen, setQuickAddOpen] = useState(false);
+
+  // Pages can open Quick Add without prop drilling: window.dispatchEvent(new Event(QUICK_ADD_EVENT)).
+  useEffect(() => {
+    const open = () => setQuickAddOpen(true);
+    window.addEventListener(QUICK_ADD_EVENT, open);
+    return () => window.removeEventListener(QUICK_ADD_EVENT, open);
+  }, []);
 
   const toggleSidebar = () => {
     setCollapsed((v) => {
