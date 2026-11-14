@@ -70,7 +70,7 @@ export const expenseInstallmentSchema = z.object({
   amount: z.coerce.number().positive("المبلغ يجب أن يكون أكبر من صفر"),
   occurredAt: z.string().min(1, "التاريخ مطلوب"),
   description: z.string().max(200).optional().or(z.literal("")),
-  installmentCount: z.coerce.number().int().min(1).max(24),
+  installmentCount: z.coerce.number().int().min(1).max(MAX_INSTALLMENT_COUNT),
   downPayment: z.coerce.number().min(0).optional().nullable(),
   payDownPaymentNow: z.boolean().optional(),
   categoryId: z.string().optional().nullable(),
