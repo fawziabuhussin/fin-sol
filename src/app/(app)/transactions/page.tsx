@@ -1,23 +1,30 @@
+import type { Metadata } from "next";
 import { requireUser } from "@/lib/session";
 import { getLookups, listTransactions } from "@/lib/tenant-data";
-import { formatUtcDate } from "@/lib/dates";
 import {
   assetMovementFromEntry,
   parseAssetMovementDescription,
 } from "@/lib/asset-movement-labels";
 import { decimalToNumber, parseIntSafe } from "@/lib/utils";
+import { currentPeriod } from "@/lib/period";
 import { TransactionsPageClient } from "@/components/pages/transactions-page-client";
-import { CategoryKind } from "@/generated/prisma/client";
+import type { TxRow } from "@/components/transactions/types";
+
+export const metadata: Metadata = { title: "المعاملات" };
+
+/** Large enough for a full year; the UI says so if a period ever exceeds it. */
+const MAX_ROWS = 3000;
 
 export default async function TransactionsPage({
   searchParams,
 }: {
   searchParams: Promise<{
     q?: string;
-    page?: string;
     year?: string;
     month?: string;
+    type?: string;
     expenseCategory?: string;
+    category?: string;
     project?: string;
     method?: string;
   }>;
@@ -25,21 +32,20 @@ export default async function TransactionsPage({
   const user = await requireUser();
   const params = await searchParams;
 
-  const now = new Date();
-  const year = parseIntSafe(params.year, now.getUTCFullYear());
-  const monthParam = params.month ?? String(now.getUTCMonth() + 1);
-  const month = monthParam === "all" ? null : parseIntSafe(monthParam, now.getUTCMonth() + 1);
-
-  const page = parseIntSafe(params.page, 1);
-  const q = params.q ?? "";
+  const now = currentPeriod();
+  const yearParam = parseIntSafe(params.year, now.year);
+  const year = yearParam >= 2000 && yearParam <= 2100 ? yearParam : now.year;
+  const monthNum = parseIntSafe(params.month, now.month);
+  const month = params.month === "all" ? null : monthNum >= 1 && monthNum <= 12 ? monthNum : now.month;
+  const q = params.q?.trim() ?? "";
   const projectId = params.project && params.project !== "all" ? params.project : undefined;
   const paymentMethodId = params.method && params.method !== "all" ? params.method : undefined;
 
   const [{ items, total, summary }, lookups] = await Promise.all([
     listTransactions({
       userId: user.id,
-      page,
-      pageSize: 300,
+      page: 1,
+      pageSize: MAX_ROWS,
       q,
       year,
       month,
@@ -49,57 +55,59 @@ export default async function TransactionsPage({
     getLookups(user.id),
   ]);
 
-  const expenseCategories = lookups.categories
-    .filter((c) => c.kind === CategoryKind.EXPENSE || c.kind === CategoryKind.SAVINGS)
-    .map((x) => ({ id: x.id, name: x.name }));
+  const rows: TxRow[] = items.map((item) => ({
+    id: item.id,
+    type: item.type,
+    amount: decimalToNumber(item.amount),
+    occurredAt: item.occurredAt.toISOString().slice(0, 10),
+    description: item.description,
+    notes: item.notes,
+    categoryId: item.categoryId,
+    projectId: item.projectId,
+    payeeId: item.payeeId,
+    paymentMethodId: item.paymentMethodId,
+    categoryName: item.category?.name ?? null,
+    categoryColor: item.category?.color ?? null,
+    projectName: item.project?.title ?? null,
+    paymentMethodName: item.paymentMethod?.name ?? null,
+    salarySlipId: item.salarySlipId,
+    employerId: item.salarySlip?.employerId ?? null,
+    assetEntryId: item.savingsAssetEntry?.id ?? item.savingsAssetEntryFee?.id ?? null,
+    assetMovement: item.savingsAssetEntry
+      ? assetMovementFromEntry(item.savingsAssetEntry)
+      : parseAssetMovementDescription(item.description),
+    linkedTo: item.subscriptionPayment
+      ? "subscription"
+      : item.splitInstallment || item.installment
+        ? "installment"
+        : null,
+  }));
 
   return (
     <TransactionsPageClient
+      rows={rows}
+      total={total}
+      summary={summary}
+      currentPeriod={now}
       filters={{
         year,
         month: month ?? "all",
-        expenseCategory: params.expenseCategory ?? "all",
+        q,
+        type: params.type ?? "all",
+        category: params.category ?? params.expenseCategory ?? "all",
         project: params.project ?? "all",
         method: params.method ?? "all",
-        q,
       }}
-      summary={summary}
-      total={total}
       lookups={{
-        categories: lookups.categories.map((x) => ({ id: x.id, name: x.name })),
-        expenseCategories,
-        projects: lookups.projects.map((x) => ({ id: x.id, name: x.title })),
-        payees: lookups.payees.map((x) => ({ id: x.id, name: x.name })),
-        paymentMethods: lookups.paymentMethods.map((x) => ({ id: x.id, name: x.name })),
+        categories: lookups.categories.map((c) => ({
+          id: c.id,
+          name: c.name,
+          kind: c.kind,
+          color: c.color,
+        })),
+        projects: lookups.projects.map((p) => ({ id: p.id, name: p.title })),
+        paymentMethods: lookups.paymentMethods.map((m) => ({ id: m.id, name: m.name })),
       }}
-      data={items.map((item) => {
-        const assetMovement = item.savingsAssetEntry
-          ? assetMovementFromEntry(item.savingsAssetEntry)
-          : parseAssetMovementDescription(item.description);
-        return {
-          id: item.id,
-          type: item.type,
-          amount: decimalToNumber(item.amount),
-          occurredAt: item.occurredAt.toISOString().slice(0, 10),
-          occurredAtLabel: formatUtcDate(item.occurredAt),
-          description: item.description,
-          notes: item.notes,
-          categoryId: item.categoryId,
-          projectId: item.projectId,
-          payeeId: item.payeeId,
-          paymentMethodId: item.paymentMethodId,
-          categoryName: item.category?.name ?? "—",
-          projectName: item.project?.title ?? "—",
-          paymentMethodName: item.paymentMethod?.name ?? "—",
-          salarySlipId: item.salarySlipId,
-          employerId: item.salarySlip?.employerId ?? null,
-          assetEntryId:
-            item.savingsAssetEntry?.id ??
-            item.savingsAssetEntryFee?.id ??
-            null,
-          assetMovement,
-        };
-      })}
     />
   );
 }

@@ -1626,6 +1626,9 @@ export async function listTransactions(params: {
         payee: true,
         paymentMethod: true,
         salarySlip: { include: { employer: true } },
+        subscriptionPayment: { select: { id: true } },
+        splitInstallment: { select: { id: true } },
+        installment: { select: { id: true } },
         savingsAssetEntry: {
           select: {
             id: true,

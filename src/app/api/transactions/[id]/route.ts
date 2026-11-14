@@ -177,7 +177,18 @@ export async function DELETE(
       });
     }
 
-    await prisma.transaction.delete({ where: { id } });
+    // Keep linked schedules consistent: the payment is no longer recorded.
+    await prisma.$transaction([
+      prisma.subscriptionPayment.updateMany({
+        where: { transactionId: id },
+        data: { paid: false, paidAt: null, transactionId: null },
+      }),
+      prisma.splitPaymentInstallment.updateMany({
+        where: { transactionId: id },
+        data: { status: InstallmentStatus.PENDING, transactionId: null },
+      }),
+      prisma.transaction.delete({ where: { id } }),
+    ]);
     return NextResponse.json({ ok: true });
   } catch (error) {
     return handleApiError(error);

@@ -24,6 +24,20 @@ export function formatCurrencyPrecise(amount: number, currency = "ILS") {
   }).format(Number.isFinite(amount) ? amount : 0);
 }
 
+/**
+ * "+3,087 ₪" / "-3,087 ₪" with correct bidi marks. Never prefix signs by hand
+ * in RTL text — they end up on the wrong side of the number.
+ */
+export function formatSignedCurrency(amount: number, opts: { precise?: boolean } = {}) {
+  return new Intl.NumberFormat("he-IL", {
+    style: "currency",
+    currency: "ILS",
+    signDisplay: "exceptZero",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: opts.precise ? 2 : 0,
+  }).format(Number.isFinite(amount) ? amount : 0);
+}
+
 export function parseMoney(value: unknown): number {
   if (value == null) return 0;
   if (typeof value === "number") return Number.isFinite(value) ? value : 0;

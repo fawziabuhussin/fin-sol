@@ -1,920 +1,718 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { motion, AnimatePresence } from "framer-motion";
-import { type ColumnDef, type RowSelectionState } from "@tanstack/react-table";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import {
-  ArrowDownCircle,
-  ArrowUpCircle,
-  ArrowUpDown,
+  ArrowDownLeft,
+  ArrowLeftRight,
+  ArrowUpRight,
+  Briefcase,
+  Check,
   ChevronLeft,
   ChevronRight,
   Coins,
+  CreditCard,
+  ListChecks,
   PiggyBank,
   Plus,
+  Repeat,
   Search,
+  SlidersHorizontal,
   Trash2,
-  Wallet,
-  Briefcase,
   X,
 } from "lucide-react";
-import {
-  assetMovementShortLabel,
-  type AssetMovementMeta,
-} from "@/lib/asset-movement-labels";
-import { DataTable } from "@/components/tables/data-table";
-import { RowActions } from "@/components/tables/row-actions";
-import { TransactionSheet } from "@/components/forms/transaction-sheet";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Select } from "@/components/ui/select";
+import { toast } from "sonner";
+import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { formatCurrency, cn } from "@/lib/utils";
-import { AR_MONTHS, monthLabel } from "@/lib/finance-labels";
-
-type TransactionRow = {
-  id: string;
-  type: "INCOME" | "EXPENSE" | "TRANSFER" | "SAVINGS_CONTRIBUTION";
-  amount: number;
-  occurredAt: string;
-  occurredAtLabel: string;
-  description: string | null;
-  notes: string | null;
-  categoryId: string | null;
-  projectId: string | null;
-  payeeId: string | null;
-  paymentMethodId: string | null;
-  categoryName: string;
-  projectName: string;
-  paymentMethodName: string;
-  salarySlipId: string | null;
-  employerId: string | null;
-  assetEntryId: string | null;
-  assetMovement: AssetMovementMeta | null;
-};
-
-function AssetMovementBadges({ movement }: { movement: AssetMovementMeta }) {
-  const isUsd = movement.asset === "USD";
-  const isPurchase = movement.type === "PURCHASE";
-  return (
-    <>
-      <span
-        className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-          isPurchase
-            ? "bg-indigo-50 text-indigo-700"
-            : "bg-red-50 text-red-700"
-        }`}
-      >
-        {assetMovementShortLabel(movement)}
-      </span>
-      {movement.asset === "USD" && (
-        <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
-          $
-        </span>
-      )}
-      {movement.asset === "GOLD" && (
-        <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
-          Au
-        </span>
-      )}
-      {movement.asset === "SILVER" && (
-        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-700">
-          Ag
-        </span>
-      )}
-      {movement.asset === "CRYPTO" && (
-        <span className="rounded-full bg-violet-50 px-2 py-0.5 text-[10px] font-semibold text-violet-700">
-          ₿
-        </span>
-      )}
-    </>
-  );
-}
+import { Select } from "@/components/ui/select";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { PageHeader } from "@/components/app-shell/page-header";
+import {
+  TransactionFormDialog,
+  deleteTransaction,
+} from "@/components/transactions/transaction-form-dialog";
+import type { TxCategory, TxRow, TxType } from "@/components/transactions/types";
+import { assetMovementShortLabel } from "@/lib/asset-movement-labels";
+import { monthLabel } from "@/lib/finance-labels";
+import { cn, formatCurrency, formatCurrencyPrecise, formatSignedCurrency } from "@/lib/utils";
 
 type Option = { id: string; name: string };
+type TypeFilter = "all" | "expense" | "income" | "savings" | "transfer";
 
 type Filters = {
   year: number;
   month: number | "all";
-  expenseCategory: string;
+  q: string;
+  type: string;
+  category: string;
   project: string;
   method: string;
-  q: string;
 };
 
-export function TransactionsPageClient({
-  data,
-  lookups,
-  filters,
-  summary,
-  total,
+const WEEKDAYS = ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
+
+const TYPE_TABS: { value: TypeFilter; label: string; match: (t: TxType) => boolean }[] = [
+  { value: "all", label: "الكل", match: () => true },
+  { value: "expense", label: "مصروفات", match: (t) => t === "EXPENSE" },
+  { value: "income", label: "دخل", match: (t) => t === "INCOME" },
+  { value: "savings", label: "ادخار", match: (t) => t === "SAVINGS_CONTRIBUTION" },
+  { value: "transfer", label: "تحويلات", match: (t) => t === "TRANSFER" },
+];
+
+/** Signed effect on the wallet: income in, everything else out. */
+const signed = (r: TxRow) => (r.type === "INCOME" ? r.amount : -r.amount);
+
+function dayHeading(iso: string) {
+  const [y, m, d] = iso.split("-").map(Number);
+  const weekday = WEEKDAYS[new Date(Date.UTC(y!, m! - 1, d!)).getUTCDay()];
+  return `${weekday}، ${d} ${monthLabel(m!)}`;
+}
+
+/* ───────────── Row ───────────── */
+
+function RowIcon({ row }: { row: TxRow }) {
+  const base = "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-sm font-bold";
+  if (row.salarySlipId) return <span className={cn(base, "bg-emerald-50 text-emerald-600")}><Briefcase className="h-[18px] w-[18px]" /></span>;
+  if (row.assetMovement) return <span className={cn(base, "bg-amber-50 text-amber-600")}><Coins className="h-[18px] w-[18px]" /></span>;
+  if (row.type === "TRANSFER") return <span className={cn(base, "bg-slate-100 text-slate-500")}><ArrowLeftRight className="h-[18px] w-[18px]" /></span>;
+  if (row.type === "SAVINGS_CONTRIBUTION") return <span className={cn(base, "bg-indigo-50 text-indigo-600")}><PiggyBank className="h-[18px] w-[18px]" /></span>;
+  if (row.categoryName) {
+    const color = row.categoryColor ?? "#64748b";
+    return (
+      <span className={base} style={{ backgroundColor: `${color}1f`, color }}>
+        {row.categoryName.trim().charAt(0)}
+      </span>
+    );
+  }
+  return (
+    <span className={cn(base, row.type === "INCOME" ? "bg-emerald-50 text-emerald-600" : "bg-slate-100 text-slate-500")}>
+      {row.type === "INCOME" ? <ArrowDownLeft className="h-[18px] w-[18px]" /> : <ArrowUpRight className="h-[18px] w-[18px]" />}
+    </span>
+  );
+}
+
+function TxListRow({
+  row,
+  selecting,
+  selected,
+  selectable,
+  onOpen,
+  onSelect,
 }: {
-  data: TransactionRow[];
-  lookups: {
-    categories: Option[];
-    expenseCategories: Option[];
-    projects: Option[];
-    payees: Option[];
-    paymentMethods: Option[];
+  row: TxRow;
+  selecting: boolean;
+  selected: boolean;
+  selectable: boolean;
+  onOpen: () => void;
+  onSelect: () => void;
+}) {
+  const title = row.description?.trim() || row.categoryName || (row.type === "INCOME" ? "دخل" : "مصروف");
+  const meta = [
+    row.description?.trim() && row.categoryName ? row.categoryName : null,
+    row.paymentMethodName,
+    row.projectName,
+  ].filter(Boolean);
+  const amountClass =
+    row.type === "INCOME"
+      ? "text-emerald-600"
+      : row.type === "SAVINGS_CONTRIBUTION"
+        ? "text-indigo-600"
+        : row.type === "TRANSFER"
+          ? "text-slate-500"
+          : "text-slate-900";
+
+  return (
+    <li>
+      <button
+        type="button"
+        onClick={selecting ? (selectable ? onSelect : undefined) : onOpen}
+        aria-pressed={selecting ? selected : undefined}
+        className={cn(
+          "flex w-full items-center gap-3 rounded-2xl px-2 py-2.5 text-start transition-colors sm:px-3",
+          selected ? "bg-indigo-50" : "hover:bg-slate-50",
+          selecting && !selectable && "cursor-not-allowed opacity-50"
+        )}
+      >
+        {selecting && (
+          <span
+            aria-hidden
+            className={cn(
+              "flex h-5 w-5 shrink-0 items-center justify-center rounded-md border-2 transition-colors",
+              selected ? "border-indigo-600 bg-indigo-600" : "border-slate-300 bg-white"
+            )}
+          >
+            {selected && <Check className="h-3.5 w-3.5 text-white" strokeWidth={3} />}
+          </span>
+        )}
+        <RowIcon row={row} />
+        <span className="min-w-0 flex-1">
+          <span className="flex items-center gap-1.5">
+            <span className="truncate text-sm font-semibold text-slate-900" dir="auto">{title}</span>
+            {row.salarySlipId && <Tag tone="emerald">راتب</Tag>}
+            {row.assetMovement && <Tag tone="amber">{assetMovementShortLabel(row.assetMovement)}</Tag>}
+            {row.linkedTo === "subscription" && <Tag tone="indigo" icon={<Repeat className="h-2.5 w-2.5" />}>اشتراك</Tag>}
+            {row.linkedTo === "installment" && <Tag tone="indigo" icon={<CreditCard className="h-2.5 w-2.5" />}>قسط</Tag>}
+          </span>
+          {meta.length > 0 && <span className="mt-0.5 block truncate text-xs text-slate-500">{meta.join(" · ")}</span>}
+        </span>
+        <span className={cn("num shrink-0 text-sm font-bold", amountClass)}>
+          {row.type === "TRANSFER"
+            ? formatCurrencyPrecise(row.amount)
+            : formatSignedCurrency(signed(row), { precise: true })}
+        </span>
+      </button>
+    </li>
+  );
+}
+
+function Tag({ children, tone, icon }: { children: React.ReactNode; tone: "emerald" | "amber" | "indigo"; icon?: React.ReactNode }) {
+  const tones = {
+    emerald: "bg-emerald-50 text-emerald-700",
+    amber: "bg-amber-50 text-amber-700",
+    indigo: "bg-indigo-50 text-indigo-700",
   };
-  filters: Filters;
-  summary: { income: number; expense: number; savings: number; transfer: number };
+  return (
+    <span className={cn("inline-flex shrink-0 items-center gap-0.5 rounded-full px-1.5 py-px text-[10px] font-semibold", tones[tone])}>
+      {icon}
+      {children}
+    </span>
+  );
+}
+
+/* ───────────── Page ───────────── */
+
+export function TransactionsPageClient({
+  rows,
+  total,
+  summary,
+  filters,
+  currentPeriod,
+  lookups,
+}: {
+  rows: TxRow[];
   total: number;
+  summary: { income: number; expense: number; savings: number; transfer: number };
+  filters: Filters;
+  currentPeriod: { year: number; month: number };
+  lookups: { categories: TxCategory[]; projects: Option[]; paymentMethods: Option[] };
 }) {
   const router = useRouter();
-  const [sheetOpen, setSheetOpen] = useState(false);
-  const [editing, setEditing] = useState<TransactionRow | null>(null);
-  const [defaultType, setDefaultType] = useState<"INCOME" | "EXPENSE">("EXPENSE");
+  const [isNavigating, startNav] = useTransition();
+  const [isMutating, startMutation] = useTransition();
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>(
+    (TYPE_TABS.some((t) => t.value === filters.type) ? filters.type : "all") as TypeFilter
+  );
+  const [category, setCategory] = useState(filters.category);
   const [q, setQ] = useState(filters.q);
-  const [isPending, startTransition] = useTransition();
-  const [salaryBlock, setSalaryBlock] = useState<TransactionRow | null>(null);
-  const [assetBlock, setAssetBlock] = useState<TransactionRow | null>(null);
-  const [shakeRowId, setShakeRowId] = useState<string | null>(null);
-  const [incomeSelection, setIncomeSelection] = useState<RowSelectionState>({});
-  const [expenseSelection, setExpenseSelection] = useState<RowSelectionState>({});
+  const [showFilters, setShowFilters] = useState(filters.project !== "all" || filters.method !== "all");
+  const [form, setForm] = useState<{ key: number; row: TxRow | null; type: TxType } | null>(null);
+  const [blocked, setBlocked] = useState<TxRow | null>(null);
+  const [selecting, setSelecting] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [confirmBulk, setConfirmBulk] = useState(false);
+  const monthInput = useRef<HTMLInputElement>(null);
+  const formSeq = useRef(0);
+  const openForm = (row: TxRow | null, type: TxType) => setForm({ key: ++formSeq.current, row, type });
 
-  const buildUrl = (next: Partial<Filters>) => {
-    const m = { ...filters, ...next };
+  /* navigation (server-side filters) */
+  const go = (next: Partial<Filters>) => {
+    const m = { ...filters, type: typeFilter, category, ...next };
     const sp = new URLSearchParams();
     sp.set("year", String(m.year));
     sp.set("month", m.month === "all" ? "all" : String(m.month));
-    if (m.expenseCategory && m.expenseCategory !== "all") {
-      sp.set("expenseCategory", m.expenseCategory);
-    }
-    if (m.project && m.project !== "all") sp.set("project", m.project);
-    if (m.method && m.method !== "all") sp.set("method", m.method);
     if (m.q) sp.set("q", m.q);
-    return `/transactions?${sp.toString()}`;
+    if (m.type !== "all") sp.set("type", m.type);
+    if (m.category !== "all") sp.set("category", m.category);
+    if (m.project !== "all") sp.set("project", m.project);
+    if (m.method !== "all") sp.set("method", m.method);
+    startNav(() => router.push(`/transactions?${sp}`, { scroll: false }));
   };
 
-  const apply = (next: Partial<Filters>) => {
-    startTransition(() => router.push(buildUrl(next)));
+  /* client-side filters: keep them in the URL without refetching */
+  const syncUrl = (type: TypeFilter, cat: string) => {
+    const sp = new URLSearchParams(window.location.search);
+    if (type === "all") sp.delete("type");
+    else sp.set("type", type);
+    if (cat === "all") sp.delete("category");
+    else sp.set("category", cat);
+    sp.delete("expenseCategory");
+    window.history.replaceState(null, "", `/transactions?${sp}`);
   };
 
-  const shiftMonth = (delta: number) => {
-    if (filters.month === "all") return;
-    let month = filters.month + delta;
-    let year = filters.year;
-    if (month < 1) {
-      month = 12;
-      year -= 1;
-    } else if (month > 12) {
-      month = 1;
-      year += 1;
-    }
-    apply({ year, month });
+  // Debounced search.
+  useEffect(() => {
+    if (q.trim() === filters.q) return;
+    const t = setTimeout(() => go({ q: q.trim() }), 450);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [q]);
+
+  const shift = (delta: number) => {
+    if (filters.month === "all") return go({ year: filters.year + delta });
+    const idx = filters.year * 12 + (filters.month - 1) + delta;
+    go({ year: Math.floor(idx / 12), month: (idx % 12) + 1 });
   };
+  const isCurrent = filters.month === currentPeriod.month && filters.year === currentPeriod.year;
+  const periodLabel = filters.month === "all" ? `سنة ${filters.year}` : `${monthLabel(filters.month)} ${filters.year}`;
 
-  const periodLabel =
-    filters.month === "all"
-      ? `سنة ${filters.year}`
-      : `${monthLabel(filters.month)} ${filters.year}`;
-
-  const currentYear = new Date().getUTCFullYear();
-  const yearOptions = Array.from(
-    { length: currentYear - 2019 },
-    (_, i) => 2020 + i
+  /* derived */
+  const typeCounts = useMemo(
+    () => Object.fromEntries(TYPE_TABS.map((t) => [t.value, rows.filter((r) => t.match(r.type)).length])),
+    [rows]
   );
+  const spendByCategory = useMemo(() => {
+    const map = new Map<string, { id: string; name: string; color: string | null; amount: number }>();
+    for (const r of rows) {
+      if (r.type !== "EXPENSE" || !r.categoryId) continue;
+      const cur = map.get(r.categoryId) ?? { id: r.categoryId, name: r.categoryName ?? "—", color: r.categoryColor, amount: 0 };
+      cur.amount += r.amount;
+      map.set(r.categoryId, cur);
+    }
+    return [...map.values()].sort((a, b) => b.amount - a.amount);
+  }, [rows]);
 
+  const visible = useMemo(() => {
+    const tab = TYPE_TABS.find((t) => t.value === typeFilter)!;
+    return rows.filter((r) => tab.match(r.type) && (category === "all" || r.categoryId === category));
+  }, [rows, typeFilter, category]);
+
+  const groups = useMemo(() => {
+    const map = new Map<string, TxRow[]>();
+    for (const r of visible) {
+      const list = map.get(r.occurredAt) ?? [];
+      list.push(r);
+      map.set(r.occurredAt, list);
+    }
+    return [...map.entries()];
+  }, [visible]);
+
+  const visibleNet = visible.reduce((s, r) => s + signed(r), 0);
   const net = summary.income - summary.expense;
+  const spentPct = summary.income > 0 ? Math.round((summary.expense / summary.income) * 100) : null;
+  const activeFilterCount = Number(filters.project !== "all") + Number(filters.method !== "all");
+  const isLocked = (r: TxRow) => Boolean(r.salarySlipId || r.assetEntryId);
 
-  const incomeRows = useMemo(
-    () => data.filter((row) => row.type === "INCOME"),
-    [data]
-  );
-
-  const expenseRows = useMemo(() => {
-    const rows = data.filter(
-      (row) => row.type === "EXPENSE" || row.type === "SAVINGS_CONTRIBUTION"
-    );
-    if (filters.expenseCategory === "all") return rows;
-    return rows.filter((row) => row.categoryId === filters.expenseCategory);
-  }, [data, filters.expenseCategory]);
-
-  const blockSalaryEdit = (row: TransactionRow) => {
-    setShakeRowId(row.id);
-    setSalaryBlock(row);
-    setTimeout(() => setShakeRowId(null), 500);
+  /* actions */
+  const openRow = (row: TxRow) => {
+    if (isLocked(row)) setBlocked(row);
+    else openForm(row, row.type);
   };
-
-  const blockAssetEdit = (row: TransactionRow) => {
-    setShakeRowId(row.id);
-    setAssetBlock(row);
-    setTimeout(() => setShakeRowId(null), 500);
-  };
-
-  const guardRowAction = (row: TransactionRow, action: () => void) => {
-    if (row.salarySlipId) {
-      blockSalaryEdit(row);
-      return;
-    }
-    if (row.assetEntryId) {
-      blockAssetEdit(row);
-      return;
-    }
-    action();
-  };
-
-  const selectColumn = (
-    selection: RowSelectionState,
-    setSelection: (value: RowSelectionState) => void,
-    rows: TransactionRow[],
-    canSelect: (row: TransactionRow) => boolean
-  ): ColumnDef<TransactionRow> => ({
-    id: "select",
-    header: () => {
-      const selectableRows = rows.filter(canSelect);
-      const allSelected =
-        selectableRows.length > 0 &&
-        selectableRows.every((row) => selection[row.id]);
-      const someSelected = selectableRows.some((row) => selection[row.id]);
-      return (
-        <input
-          type="checkbox"
-          aria-label="تحديد الكل"
-          checked={allSelected}
-          ref={(el) => {
-            if (el) el.indeterminate = someSelected && !allSelected;
-          }}
-          onChange={() => {
-            if (allSelected) {
-              setSelection({});
-              return;
-            }
-            const next: RowSelectionState = {};
-            for (const row of selectableRows) next[row.id] = true;
-            setSelection(next);
-          }}
-          className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
-        />
-      );
-    },
-    cell: ({ row }) => {
-      if (!canSelect(row.original)) return null;
-      return (
-        <input
-          type="checkbox"
-          aria-label="تحديد الصف"
-          checked={Boolean(selection[row.original.id])}
-          onChange={() => {
-            setSelection({
-              ...selection,
-              [row.original.id]: !selection[row.original.id],
-            });
-          }}
-          className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
-        />
-      );
-    },
-    enableSorting: false,
-  });
-
-  const selectedIncomeIds = Object.keys(incomeSelection).filter((id) => incomeSelection[id]);
-  const selectedExpenseIds = Object.keys(expenseSelection).filter((id) => expenseSelection[id]);
-
-  const incomeColumns = useMemo<ColumnDef<TransactionRow>[]>(
-    () => [
-      selectColumn(
-        incomeSelection,
-        setIncomeSelection,
-        incomeRows,
-        (row) => !row.salarySlipId && !row.assetEntryId
-      ),
-      {
-        accessorKey: "occurredAtLabel",
-        header: ({ column }) => (
-          <button
-            className="flex items-center gap-1"
-            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-          >
-            التاريخ <ArrowUpDown className="h-3 w-3" />
-          </button>
-        ),
-        cell: ({ row }) => (
-          <motion.span
-            animate={shakeRowId === row.original.id ? { x: [0, -6, 6, -6, 6, 0] } : {}}
-            transition={{ duration: 0.4 }}
-            className="inline-block"
-          >
-            {row.original.occurredAtLabel}
-          </motion.span>
-        ),
-      },
-      {
-        accessorKey: "amount",
-        header: ({ column }) => (
-          <button
-            className="flex items-center gap-1"
-            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-          >
-            المبلغ <ArrowUpDown className="h-3 w-3" />
-          </button>
-        ),
-        cell: ({ row }) => (
-          <motion.span
-            animate={shakeRowId === row.original.id ? { x: [0, -6, 6, -6, 6, 0] } : {}}
-            className="inline-block font-bold text-emerald-700"
-          >
-            +{formatCurrency(row.original.amount)}
-          </motion.span>
-        ),
-      },
-      {
-        accessorKey: "description",
-        header: "المصدر",
-        cell: ({ row }) => (
-          <div className="flex flex-wrap items-center gap-2">
-            <span>{row.original.description}</span>
-            {row.original.assetMovement && (
-              <AssetMovementBadges movement={row.original.assetMovement} />
-            )}
-            {row.original.salarySlipId && (
-              <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">
-                من الراتب
-              </span>
-            )}
-          </div>
-        ),
-      },
-      { accessorKey: "categoryName", header: "الفئة" },
-      { accessorKey: "paymentMethodName", header: "الدفع" },
-      {
-        id: "actions",
-        header: "",
-        cell: ({ row }) => (
-          <RowActions
-            onEdit={() => guardRowAction(row.original, () => openEdit(row.original))}
-            onDelete={() =>
-              guardRowAction(row.original, () => deleteRow(row.original.id))
-            }
-          />
-        ),
-      },
-    ],
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [router, shakeRowId, incomeSelection, incomeRows]
-  );
-
-  const expenseColumns = useMemo<ColumnDef<TransactionRow>[]>(
-    () => [
-      selectColumn(
-        expenseSelection,
-        setExpenseSelection,
-        expenseRows,
-        (row) => !row.assetEntryId
-      ),
-      {
-        accessorKey: "occurredAtLabel",
-        header: ({ column }) => (
-          <button
-            className="flex items-center gap-1"
-            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-          >
-            التاريخ <ArrowUpDown className="h-3 w-3" />
-          </button>
-        ),
-      },
-      {
-        accessorKey: "amount",
-        header: ({ column }) => (
-          <button
-            className="flex items-center gap-1"
-            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-          >
-            المبلغ <ArrowUpDown className="h-3 w-3" />
-          </button>
-        ),
-        cell: ({ row }) => (
-          <span
-            className={cn(
-              "font-bold",
-              row.original.type === "EXPENSE" ? "text-rose-700" : "text-indigo-700"
-            )}
-          >
-            −{formatCurrency(row.original.amount)}
-          </span>
-        ),
-      },
-      { accessorKey: "categoryName", header: "الفئة" },
-      { accessorKey: "projectName", header: "المشروع" },
-      {
-        accessorKey: "description",
-        header: "الوصف",
-        cell: ({ row }) => (
-          <div className="flex flex-wrap items-center gap-2">
-            <span>{row.original.description}</span>
-            {row.original.assetMovement ? (
-              <AssetMovementBadges movement={row.original.assetMovement} />
-            ) : null}
-          </div>
-        ),
-      },
-      { accessorKey: "paymentMethodName", header: "الدفع" },
-      {
-        id: "actions",
-        header: "",
-        cell: ({ row }) => (
-          <RowActions
-            onEdit={() => guardRowAction(row.original, () => openEdit(row.original))}
-            onDelete={() =>
-              guardRowAction(row.original, () => deleteRow(row.original.id))
-            }
-          />
-        ),
-      },
-    ],
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [router, expenseSelection, expenseRows]
-  );
-
-  const openEdit = (row: TransactionRow) => {
-    setEditing(row);
-    setSheetOpen(true);
-  };
-
-  const deleteRow = (id: string) => {
-    startTransition(async () => {
-      await fetch(`/api/transactions/${id}`, { method: "DELETE" });
-      router.refresh();
+  const toggleSelected = (id: string) =>
+    setSelected((s) => {
+      const n = new Set(s);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      return n;
     });
+  const exitSelect = () => {
+    setSelecting(false);
+    setSelected(new Set());
   };
-
-  const deleteSelected = (ids: string[], clearSelection: () => void) => {
-    if (ids.length === 0) return;
-    if (!window.confirm(`حذف ${ids.length} معاملة؟`)) return;
-    startTransition(async () => {
-      await Promise.all(
-        ids.map((id) => fetch(`/api/transactions/${id}`, { method: "DELETE" }))
-      );
-      clearSelection();
+  const bulkDelete = () =>
+    startMutation(async () => {
+      const ids = [...selected];
+      const errors: string[] = [];
+      for (const id of ids) {
+        const err = await deleteTransaction(id);
+        if (err) errors.push(err);
+      }
+      setConfirmBulk(false);
+      exitSelect();
       router.refresh();
+      const okCount = ids.length - errors.length;
+      if (okCount) toast.success(`حُذفت ${okCount} ${okCount === 1 ? "معاملة" : "معاملات"}`);
+      if (errors.length) toast.error(`تعذّر حذف ${errors.length}: ${errors[0]}`);
     });
-  };
-
-  const openAdd = (type: "INCOME" | "EXPENSE") => {
-    setDefaultType(type);
-    setEditing(null);
-    setSheetOpen(true);
-  };
+  const selectedSum = rows.filter((r) => selected.has(r.id)).reduce((s, r) => s + r.amount, 0);
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-xl font-extrabold text-slate-900 sm:text-2xl">المعاملات</h1>
-          <p className="text-sm text-slate-500">
-            {periodLabel} · {total} معاملة
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2 self-start sm:self-auto">
-          <Button variant="outline" onClick={() => openAdd("INCOME")} className="gap-2">
-            <Plus className="h-4 w-4" />
-            إضافة دخل
-          </Button>
-          <Button onClick={() => openAdd("EXPENSE")} className="gap-2">
-            <Plus className="h-4 w-4" />
-            إضافة مصروف
-          </Button>
-        </div>
-      </div>
+    <div className={cn("space-y-5", selecting && "pb-24")}>
+      <PageHeader
+        title="المعاملات"
+        description={`${periodLabel} · ${total} ${total === 1 ? "معاملة" : "معاملات"}`}
+        actions={
+          <>
+            <Button variant="outline" onClick={() => openForm(null, "INCOME")}>
+              <ArrowDownLeft className="h-4 w-4 text-emerald-600" /> دخل
+            </Button>
+            <Button variant="brand" onClick={() => openForm(null, "EXPENSE")}>
+              <Plus className="h-4 w-4" /> مصروف
+            </Button>
+          </>
+        }
+      />
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <SummaryCard
-          icon={<ArrowUpCircle className="h-5 w-5" />}
-          label="الدخل"
-          value={summary.income}
-          tone="emerald"
-        />
-        <SummaryCard
-          icon={<ArrowDownCircle className="h-5 w-5" />}
-          label="المصروف"
-          value={summary.expense}
-          tone="rose"
-        />
-        <SummaryCard
-          icon={<Wallet className="h-5 w-5" />}
-          label="الصافي"
-          value={net}
-          tone={net >= 0 ? "emerald" : "rose"}
-          signed
-        />
-        <SummaryCard
-          icon={<Wallet className="h-5 w-5" />}
-          label="الادخار"
-          value={summary.savings}
-          tone="indigo"
-        />
-      </div>
-
-      <Card>
-        <CardContent className="space-y-3 p-4">
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="flex items-center gap-1 rounded-xl border border-slate-200 bg-white p-1">
-              <button
-                type="button"
-                onClick={() => shiftMonth(-1)}
-                disabled={filters.month === "all"}
-                className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 disabled:opacity-30"
-                aria-label="الشهر السابق"
-              >
-                <ChevronRight className="h-4 w-4" />
-              </button>
-              <Select
-                value={filters.month === "all" ? "" : String(filters.month)}
-                onChange={(e) => {
-                  const v = Number(e.target.value);
-                  if (!v) return;
-                  apply({ month: v });
-                }}
-                className="h-8 min-w-[6.5rem] w-auto shrink-0 border-0 bg-transparent py-0 pe-6 ps-2 text-sm font-bold text-slate-800 focus-visible:ring-0"
-                aria-label="اختر الشهر"
-              >
-                {filters.month === "all" && (
-                  <option value="" disabled>
-                    اختر شهر
-                  </option>
-                )}
-                {AR_MONTHS.map((label, idx) => (
-                  <option key={label} value={idx + 1}>
-                    {label}
-                  </option>
-                ))}
-              </Select>
-              <Select
-                value={String(filters.year)}
-                onChange={(e) => apply({ year: Number(e.target.value) })}
-                className="h-8 w-[5.25rem] shrink-0 border-0 border-s border-slate-200 bg-transparent py-0 pe-7 ps-2 text-sm font-bold text-slate-800 focus-visible:ring-0"
-                aria-label="اختر السنة"
-              >
-                {yearOptions.map((y) => (
-                  <option key={y} value={y}>
-                    {y}
-                  </option>
-                ))}
-              </Select>
-              <button
-                type="button"
-                onClick={() => shiftMonth(1)}
-                disabled={filters.month === "all"}
-                className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 disabled:opacity-30"
-                aria-label="الشهر التالي"
-              >
-                <ChevronLeft className="h-4 w-4" />
-              </button>
+      {/* Period + summary */}
+      <Card className="overflow-hidden">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-3 py-2.5 sm:px-4">
+          <div className="flex items-center gap-1">
+            <Button variant="ghost" size="icon-sm" onClick={() => shift(-1)} aria-label="السابق">
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+            <div className="relative">
+              <span className="block min-w-[120px] rounded-lg px-2 py-1 text-center text-sm font-bold text-slate-900 hover:bg-slate-100">
+                {periodLabel}
+              </span>
+              {filters.month !== "all" && (
+                <input
+                  ref={monthInput}
+                  type="month"
+                  aria-label="اختر الشهر"
+                  value={`${filters.year}-${String(filters.month).padStart(2, "0")}`}
+                  onClick={() => monthInput.current?.showPicker?.()}
+                  onChange={(e) => {
+                    const [y, m] = e.target.value.split("-").map(Number);
+                    if (y && m) go({ year: y, month: m });
+                  }}
+                  className="absolute inset-0 cursor-pointer opacity-0"
+                />
+              )}
             </div>
+            <Button variant="ghost" size="icon-sm" onClick={() => shift(1)} aria-label="التالي">
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+          </div>
+          <div className="flex items-center gap-1.5">
+            {!isCurrent && (
+              <button
+                type="button"
+                onClick={() => go({ year: currentPeriod.year, month: currentPeriod.month })}
+                className="rounded-lg px-2.5 py-1.5 text-xs font-semibold text-indigo-600 hover:bg-indigo-50"
+              >
+                الشهر الحالي
+              </button>
+            )}
             <button
               type="button"
-              onClick={() =>
-                apply({ month: filters.month === "all" ? new Date().getUTCMonth() + 1 : "all" })
-              }
+              onClick={() => go(filters.month === "all" ? { month: currentPeriod.month, year: filters.year } : { month: "all" })}
+              aria-pressed={filters.month === "all"}
               className={cn(
-                "rounded-xl border px-3 py-2 text-sm font-semibold transition-all",
+                "rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition-colors",
                 filters.month === "all"
                   ? "border-indigo-500 bg-indigo-50 text-indigo-700"
-                  : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+                  : "border-slate-200 text-slate-600 hover:border-slate-300"
               )}
             >
               كل السنة
             </button>
           </div>
+        </div>
 
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-            <Select value={filters.project} onChange={(e) => apply({ project: e.target.value })}>
-              <option value="all">كل المشاريع</option>
-              {lookups.projects.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </Select>
-            <Select value={filters.method} onChange={(e) => apply({ method: e.target.value })}>
-              <option value="all">كل طرق الدفع</option>
-              {lookups.paymentMethods.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.name}
-                </option>
-              ))}
-            </Select>
-          </div>
+        <div className={cn("p-4 transition-opacity sm:p-5", isNavigating && "opacity-60")}>
+          <dl className="grid grid-cols-2 gap-x-4 gap-y-4 sm:grid-cols-4">
+            <Stat label="الدخل" value={formatSignedCurrency(summary.income)} tone="text-emerald-600" />
+            <Stat label="المصروفات" value={formatSignedCurrency(-summary.expense)} tone="text-rose-600" />
+            <Stat
+              label="الصافي"
+              value={formatSignedCurrency(net)}
+              tone={net >= 0 ? "text-slate-900" : "text-rose-600"}
+              emphasis
+            />
+            <Stat label="ادخار وتحويلات" value={formatCurrency(summary.savings + summary.transfer)} tone="text-indigo-600" />
+          </dl>
+          {spentPct != null && (
+            <div className="mt-4">
+              <div className="h-2 overflow-hidden rounded-full bg-emerald-100">
+                <div
+                  className={cn("h-full rounded-full transition-[width] duration-500", spentPct > 100 ? "bg-rose-500" : "bg-rose-400")}
+                  style={{ width: `${Math.min(100, spentPct)}%` }}
+                />
+              </div>
+              <p className="mt-1.5 text-xs text-slate-500">
+                صرفت <span className="num font-semibold text-slate-700">{spentPct}%</span> من دخلك
+                {spentPct > 100 ? " — المصروفات أعلى من الدخل" : spentPct <= 80 ? " — ممتاز 👌" : ""}
+              </p>
+            </div>
+          )}
+        </div>
+      </Card>
 
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              apply({ q });
-            }}
-            className="relative"
-          >
+      {/* Toolbar */}
+      <div className="space-y-3">
+        <div className="flex gap-2">
+          <div className="relative flex-1">
             <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <Input
+            <input
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder="بحث في الوصف والملاحظات..."
-              className="pr-9"
+              placeholder="ابحث في الوصف والملاحظات…"
+              aria-label="بحث"
+              className="h-10 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-9 text-base shadow-card placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none sm:text-sm"
             />
-          </form>
-        </CardContent>
-      </Card>
-
-      {/* Income table */}
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="flex items-center gap-2 text-base text-emerald-700">
-            <ArrowUpCircle className="h-5 w-5" />
-            الدخل ({incomeRows.length})
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="p-2 sm:p-4">
-          {selectedIncomeIds.length > 0 && (
-            <div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2">
-              <span className="text-sm font-semibold text-rose-800">
-                {selectedIncomeIds.length} محدد
-              </span>
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-1 border-rose-300 text-rose-700 hover:bg-rose-100"
-                onClick={() =>
-                  deleteSelected(selectedIncomeIds, () => setIncomeSelection({}))
-                }
+            {q && (
+              <button
+                type="button"
+                onClick={() => setQ("")}
+                aria-label="مسح البحث"
+                className="absolute left-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-slate-400 hover:text-slate-700"
               >
-                <Trash2 className="h-4 w-4" />
-                حذف المحدد
-              </Button>
-            </div>
-          )}
-          {incomeRows.length === 0 ? (
-            <div className="p-8 text-center text-sm text-slate-500">
-              لا يوجد دخل لهذه الفترة.
-            </div>
-          ) : (
-            <DataTable
-              columns={incomeColumns}
-              data={incomeRows}
-              getRowId={(row) => row.id}
-              rowSelection={incomeSelection}
-              onRowSelectionChange={setIncomeSelection}
-              enableRowSelection={(row) =>
-                !row.original.salarySlipId && !row.original.assetEntryId
-              }
-            />
-          )}
-        </CardContent>
-      </Card>
+                <X className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+          <Button
+            variant="outline"
+            onClick={() => setShowFilters((v) => !v)}
+            aria-expanded={showFilters}
+            className={cn(activeFilterCount > 0 && "border-indigo-300 text-indigo-700")}
+          >
+            <SlidersHorizontal className="h-4 w-4" />
+            <span className="hidden sm:inline">فلاتر</span>
+            {activeFilterCount > 0 && (
+              <span className="num flex h-5 min-w-5 items-center justify-center rounded-full bg-indigo-600 px-1 text-[11px] text-white">
+                {activeFilterCount}
+              </span>
+            )}
+          </Button>
+        </div>
 
-      {/* Expense table */}
-      <Card>
-        <CardHeader className="space-y-3 pb-2">
-          <CardTitle className="flex items-center gap-2 text-base text-rose-700">
-            <ArrowDownCircle className="h-5 w-5" />
-            المصروفات ({expenseRows.length})
-          </CardTitle>
-          <div className="flex flex-wrap gap-2">
+        {showFilters && (
+          <div className="grid gap-2 rounded-2xl border border-slate-200 bg-white p-3 shadow-card sm:grid-cols-3">
+            <Select value={filters.project} onChange={(e) => go({ project: e.target.value })} aria-label="المشروع">
+              <option value="all">كل المشاريع</option>
+              {lookups.projects.map((p) => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </Select>
+            <Select value={filters.method} onChange={(e) => go({ method: e.target.value })} aria-label="طريقة الدفع">
+              <option value="all">كل طرق الدفع</option>
+              {lookups.paymentMethods.map((m) => (
+                <option key={m.id} value={m.id}>{m.name}</option>
+              ))}
+            </Select>
+            <Select
+              value={category}
+              onChange={(e) => {
+                setCategory(e.target.value);
+                syncUrl(typeFilter, e.target.value);
+              }}
+              aria-label="الفئة"
+            >
+              <option value="all">كل الفئات</option>
+              {lookups.categories.map((c) => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </Select>
+            {(activeFilterCount > 0 || category !== "all") && (
+              <button
+                type="button"
+                onClick={() => {
+                  setCategory("all");
+                  go({ project: "all", method: "all", category: "all" });
+                }}
+                className="text-start text-xs font-semibold text-indigo-600 hover:text-indigo-800 sm:col-span-3"
+              >
+                مسح كل الفلاتر
+              </button>
+            )}
+          </div>
+        )}
+
+        <div className="-mx-4 flex gap-1.5 overflow-x-auto px-4 pb-1 [scrollbar-width:none] sm:mx-0 sm:px-0">
+          {TYPE_TABS.filter((t) => t.value === "all" || typeCounts[t.value] > 0).map((t) => (
             <button
+              key={t.value}
               type="button"
-              onClick={() => apply({ expenseCategory: "all" })}
+              onClick={() => {
+                setTypeFilter(t.value);
+                syncUrl(t.value, category);
+              }}
+              aria-pressed={typeFilter === t.value}
               className={cn(
-                "rounded-full border px-3 py-1 text-xs font-semibold transition-all",
-                filters.expenseCategory === "all"
-                  ? "border-rose-500 bg-rose-50 text-rose-700"
-                  : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+                "shrink-0 rounded-full px-3.5 py-1.5 text-xs font-semibold transition-colors",
+                typeFilter === t.value ? "bg-slate-900 text-white" : "bg-white text-slate-600 ring-1 ring-inset ring-slate-200 hover:ring-slate-300"
               )}
             >
-              كل الفئات
+              {t.label} <span className="num opacity-60">{typeCounts[t.value]}</span>
             </button>
-            {lookups.expenseCategories.map((cat) => (
-              <button
-                key={cat.id}
-                type="button"
-                onClick={() => apply({ expenseCategory: cat.id })}
-                className={cn(
-                  "rounded-full border px-3 py-1 text-xs font-semibold transition-all",
-                  filters.expenseCategory === cat.id
-                    ? "border-rose-500 bg-rose-50 text-rose-700"
-                    : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
-                )}
-              >
-                {cat.name}
-              </button>
-            ))}
+          ))}
+        </div>
+
+        {(typeFilter === "all" || typeFilter === "expense") && spendByCategory.length > 1 && (
+          <div>
+            <p className="mb-1.5 text-xs font-medium text-slate-500">أين صرفت</p>
+            <div className="-mx-4 flex gap-1.5 overflow-x-auto px-4 pb-1 [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:px-0">
+              {spendByCategory.map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => {
+                    const next = category === c.id ? "all" : c.id;
+                    setCategory(next);
+                    syncUrl(typeFilter, next);
+                  }}
+                  aria-pressed={category === c.id}
+                  className={cn(
+                    "flex shrink-0 items-center gap-1.5 rounded-xl border px-2.5 py-1.5 text-xs transition-colors",
+                    category === c.id ? "border-indigo-500 bg-indigo-50" : "border-slate-200 bg-white hover:border-slate-300"
+                  )}
+                >
+                  <span className="h-2 w-2 rounded-full" style={{ backgroundColor: c.color ?? "#94a3b8" }} />
+                  <span className="font-medium text-slate-700">{c.name}</span>
+                  <span className="num font-semibold text-slate-900">{formatCurrency(c.amount)}</span>
+                </button>
+              ))}
+            </div>
           </div>
-        </CardHeader>
-        <CardContent className="p-2 sm:p-4">
-          {selectedExpenseIds.length > 0 && (
-            <div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2">
-              <span className="text-sm font-semibold text-rose-800">
-                {selectedExpenseIds.length} محدد
-              </span>
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-1 border-rose-300 text-rose-700 hover:bg-rose-100"
-                onClick={() =>
-                  deleteSelected(selectedExpenseIds, () => setExpenseSelection({}))
-                }
-              >
-                <Trash2 className="h-4 w-4" />
-                حذف المحدد
+        )}
+      </div>
+
+      {total > rows.length && (
+        <p className="rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          تُعرض أحدث {rows.length} معاملة من {total} — اختر شهراً أو استخدم البحث لرؤية الباقي.
+        </p>
+      )}
+
+      {/* List */}
+      <Card className={cn("p-2 transition-opacity sm:p-3", isNavigating && "opacity-60")}>
+        <div className="flex items-center justify-between gap-2 px-2 pb-1 pt-2 sm:px-3">
+          <p className="text-xs text-slate-500">
+            <span className="num font-semibold text-slate-700">{visible.length}</span> معاملة · الصافي{" "}
+            <span className={cn("num font-semibold", visibleNet >= 0 ? "text-emerald-600" : "text-slate-700")}>
+              {formatSignedCurrency(visibleNet)}
+            </span>
+          </p>
+          {visible.length > 0 && (
+            <Button variant="ghost" size="sm" onClick={() => (selecting ? exitSelect() : setSelecting(true))}>
+              <ListChecks className="h-4 w-4" /> {selecting ? "إلغاء" : "تحديد"}
+            </Button>
+          )}
+        </div>
+
+        {visible.length === 0 ? (
+          <div className="px-4 py-14 text-center">
+            <p className="text-sm font-medium text-slate-700">
+              {rows.length === 0 ? `لا معاملات في ${periodLabel}` : "لا نتائج مطابقة"}
+            </p>
+            <p className="mt-1 text-xs text-slate-500">
+              {rows.length === 0 ? "أضف أول مصروف أو دخل لهذه الفترة." : "جرّب تغيير الفلتر أو كلمة البحث."}
+            </p>
+            {rows.length === 0 && (
+              <Button variant="brand" size="sm" className="mt-4" onClick={() => openForm(null, "EXPENSE")}>
+                <Plus className="h-4 w-4" /> إضافة معاملة
               </Button>
-            </div>
-          )}
-          {expenseRows.length === 0 ? (
-            <div className="p-8 text-center text-sm text-slate-500">
-              لا توجد مصروفات لهذه الفترة
-              {filters.expenseCategory !== "all" ? " في هذه الفئة." : "."}
-            </div>
-          ) : (
-            <DataTable
-              columns={expenseColumns}
-              data={expenseRows}
-              getRowId={(row) => row.id}
-              rowSelection={expenseSelection}
-              onRowSelectionChange={setExpenseSelection}
-            />
-          )}
-        </CardContent>
+            )}
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {groups.map(([day, list]) => {
+              const dayNet = list.reduce((s, r) => s + signed(r), 0);
+              return (
+                <section key={day} aria-label={dayHeading(day)}>
+                  <div className="sticky top-14 z-10 flex items-center justify-between bg-white/95 px-3 py-1.5 backdrop-blur lg:top-[72px]">
+                    <h3 className="text-xs font-semibold text-slate-500">{dayHeading(day)}</h3>
+                    <span className={cn("num text-xs font-semibold", dayNet >= 0 ? "text-emerald-600" : "text-slate-500")}>
+                      {formatSignedCurrency(dayNet)}
+                    </span>
+                  </div>
+                  <ul>
+                    {list.map((row) => (
+                      <TxListRow
+                        key={row.id}
+                        row={row}
+                        selecting={selecting}
+                        selected={selected.has(row.id)}
+                        selectable={!isLocked(row)}
+                        onOpen={() => openRow(row)}
+                        onSelect={() => toggleSelected(row.id)}
+                      />
+                    ))}
+                  </ul>
+                </section>
+              );
+            })}
+          </div>
+        )}
       </Card>
 
-      <TransactionSheet
-        open={sheetOpen}
-        onOpenChange={setSheetOpen}
-        transactionId={editing?.id}
-        initial={
-          editing
-            ? {
-                type: editing.type,
-                amount: editing.amount,
-                occurredAt: editing.occurredAt,
-                description: editing.description ?? "",
-                notes: editing.notes ?? "",
-                categoryId: editing.categoryId ?? "",
-                projectId: editing.projectId ?? "",
-                payeeId: editing.payeeId ?? "",
-                paymentMethodId: editing.paymentMethodId ?? "",
-                currency: "ILS",
-              }
-            : { type: defaultType }
-        }
-        lookups={lookups}
-      />
-      {isPending && <p className="text-xs text-slate-500">جاري التحديث...</p>}
+      {/* Bulk bar */}
+      {selecting && (
+        <div className="fixed inset-x-0 bottom-[calc(72px+env(safe-area-inset-bottom))] z-40 px-4 lg:bottom-6">
+          <div className="mx-auto flex max-w-xl items-center justify-between gap-3 rounded-2xl bg-slate-900 px-4 py-3 text-white shadow-float">
+            <p className="text-sm">
+              <span className="num font-bold">{selected.size}</span> محددة
+              {selected.size > 0 && <span className="num text-white/60"> · {formatCurrency(selectedSum)}</span>}
+            </p>
+            <div className="flex items-center gap-1">
+              <Button size="sm" variant="ghost" className="text-white hover:bg-white/10" onClick={exitSelect}>
+                إلغاء
+              </Button>
+              <Button size="sm" variant="destructive" disabled={selected.size === 0} onClick={() => setConfirmBulk(true)}>
+                <Trash2 className="h-4 w-4" /> حذف
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
-      <AnimatePresence>
-        {assetBlock && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-            onClick={() => setAssetBlock(null)}
-          >
-            <motion.div
-              initial={{ scale: 0.95, y: 8 }}
-              animate={{ scale: 1, y: 0 }}
-              exit={{ scale: 0.95, y: 8 }}
-              className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl"
-              onClick={(e) => e.stopPropagation()}
+      {form && (
+        <TransactionFormDialog
+          key={form.key}
+          open
+          onOpenChange={(o) => !o && setForm(null)}
+          transaction={form.row}
+          defaultType={form.type}
+          lookups={lookups}
+        />
+      )}
+
+      <ConfirmDialog
+        open={confirmBulk}
+        onOpenChange={setConfirmBulk}
+        destructive
+        pending={isMutating}
+        confirmLabel={`حذف ${selected.size}`}
+        title={`حذف ${selected.size} ${selected.size === 1 ? "معاملة" : "معاملات"}؟`}
+        description="تُحذف من كل التقارير. دفعات الاشتراكات والأقساط المرتبطة تعود غير مدفوعة."
+        onConfirm={bulkDelete}
+      />
+
+      <Dialog open={blocked != null} onOpenChange={(o) => !o && setBlocked(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader className="pb-4">
+            <span
+              className={cn(
+                "mb-2 flex h-11 w-11 items-center justify-center rounded-xl",
+                blocked?.salarySlipId ? "bg-emerald-50 text-emerald-600" : "bg-amber-50 text-amber-600"
+              )}
             >
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-violet-50 text-violet-700">
-                  {assetBlock.assetMovement?.asset === "USD" ? (
-                    <Wallet className="h-5 w-5" />
-                  ) : (
-                    <Coins className="h-5 w-5" />
-                  )}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setAssetBlock(null)}
-                  className="rounded-lg p-1 text-slate-400 hover:bg-slate-100"
-                >
-                  <X className="h-5 w-5" />
-                </button>
-              </div>
-              <h2 className="mt-3 text-lg font-bold text-slate-900">
-                تعديل من صفحة الادخار
-              </h2>
-              <p className="mt-2 text-sm text-slate-600">
-                معاملة <strong>{assetBlock.description}</strong> مرتبطة بحركة
-                أصول (شراء أو سحب). لتغيير المبلغ أو التاريخ، عدّلها من سجل
-                الحركات في صفحة الادخار.
-              </p>
-              <div className="mt-5 flex flex-col gap-2 sm:flex-row">
-                <Button asChild className="flex-1">
-                  <Link href="/savings">
-                    <PiggyBank className="me-2 h-4 w-4" />
-                    فتح الادخار
-                  </Link>
-                </Button>
-                <Button
-                  variant="outline"
-                  className="flex-1"
-                  onClick={() => setAssetBlock(null)}
-                >
-                  حسناً
-                </Button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-        {salaryBlock && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-            onClick={() => setSalaryBlock(null)}
-          >
-            <motion.div
-              initial={{ scale: 0.95, y: 8 }}
-              animate={{ scale: 1, y: 0 }}
-              exit={{ scale: 0.95, y: 8 }}
-              className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-indigo-50 text-indigo-700">
-                  <Briefcase className="h-5 w-5" />
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setSalaryBlock(null)}
-                  className="rounded-lg p-1 text-slate-400 hover:bg-slate-100"
-                >
-                  <X className="h-5 w-5" />
-                </button>
-              </div>
-              <h2 className="mt-3 text-lg font-bold text-slate-900">
-                تعديل من صفحة الراتب
-              </h2>
-              <p className="mt-2 text-sm text-slate-600">
-                دخل <strong>{salaryBlock.description}</strong> مرتبط بكشف الراتب.
-                لتغيير المبلغ أو التاريخ، افتح صفحة جهة العمل في متابعة الراتب.
-              </p>
-              <p className="mt-2 text-xs text-slate-500">
-                يُحدَّث المبلغ تلقائياً في المعاملات لنفس شهر الراتب.
-              </p>
-              <div className="mt-5 flex flex-col gap-2 sm:flex-row">
-                {salaryBlock.employerId ? (
-                  <Button asChild className="flex-1">
-                    <Link href={`/salary/${salaryBlock.employerId}`}>
-                      فتح الراتب
-                    </Link>
-                  </Button>
-                ) : (
-                  <Button asChild className="flex-1">
-                    <Link href="/salary">متابعة الراتب</Link>
-                  </Button>
-                )}
-                <Button
-                  variant="outline"
-                  className="flex-1"
-                  onClick={() => setSalaryBlock(null)}
-                >
-                  إغلاق
-                </Button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+              {blocked?.salarySlipId ? <Briefcase className="h-5 w-5" /> : <Coins className="h-5 w-5" />}
+            </span>
+            <DialogTitle>{blocked?.salarySlipId ? "يُعدَّل من صفحة الراتب" : "يُعدَّل من صفحة الادخار"}</DialogTitle>
+            <DialogDescription>
+              {blocked?.salarySlipId
+                ? `«${blocked?.description ?? "الدخل"}» مرتبط بقسيمة الراتب ويُحدَّث منها تلقائياً — عدّل القسيمة لتغيير المبلغ أو التاريخ.`
+                : `«${blocked?.description ?? "المعاملة"}» مرتبطة بشراء أو سحب أصول — عدّلها من سجل الحركات في الادخار.`}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setBlocked(null)}>إغلاق</Button>
+            <Button asChild variant="brand">
+              <Link href={blocked?.salarySlipId ? (blocked.employerId ? `/salary/${blocked.employerId}` : "/salary") : "/savings"}>
+                {blocked?.salarySlipId ? "فتح الراتب" : "فتح الادخار"}
+              </Link>
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
 
-function SummaryCard({
-  icon,
-  label,
-  value,
-  tone,
-  signed,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: number;
-  tone: "emerald" | "rose" | "indigo";
-  signed?: boolean;
-}) {
-  const tones = {
-    emerald: "bg-emerald-50 text-emerald-700",
-    rose: "bg-rose-50 text-rose-700",
-    indigo: "bg-indigo-50 text-indigo-700",
-  } as const;
+function Stat({ label, value, tone, emphasis }: { label: string; value: string; tone: string; emphasis?: boolean }) {
   return (
-    <Card>
-      <CardContent className="flex items-center gap-3 p-4">
-        <span className={cn("flex h-10 w-10 items-center justify-center rounded-xl", tones[tone])}>
-          {icon}
-        </span>
-        <div className="min-w-0">
-          <p className="text-xs text-slate-500">{label}</p>
-          <p className="truncate text-lg font-extrabold text-slate-900">
-            {signed && value >= 0 ? "+" : ""}
-            {formatCurrency(value)}
-          </p>
-        </div>
-      </CardContent>
-    </Card>
+    <div className="min-w-0">
+      <dt className="text-xs text-slate-500">{label}</dt>
+      <dd className={cn("num mt-0.5 truncate font-bold", emphasis ? "text-xl sm:text-2xl" : "text-lg", tone)}>{value}</dd>
+    </div>
   );
 }

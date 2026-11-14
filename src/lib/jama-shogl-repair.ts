@@ -1,4 +1,5 @@
 import { TransactionType } from "@/generated/prisma/client";
+import { isOwnerEmail } from "@/lib/security/owner";
 import { prisma } from "@/lib/db";
 import { monthRangeUTC } from "@/lib/dates";
 import {
@@ -43,11 +44,20 @@ async function dedupeJamaShoglIncomeForMonth(
 }
 
 /** Persist official BGU pay-month slips and leave one income row per month. */
+const repaired = new Set<string>();
+
 export async function persistOfficialJamaShoglSlips(
   userId: string,
   year = 2026
 ) {
   if (year !== 2026) return;
+  // Runs on page loads: do it once per server instance per user.
+  const memoKey = `${userId}:${year}`;
+  if (repaired.has(memoKey)) return;
+  repaired.add(memoKey);
+  // These are the original owner's official payslips — never apply them to other accounts.
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { email: true } });
+  if (!isOwnerEmail(user?.email)) return;
 
   const employers = await prisma.employer.findMany({
     where: { userId },
