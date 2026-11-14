@@ -47,7 +47,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, formatSignedCurrency } from "@/lib/utils";
+import { useConfirm } from "@/components/ui/confirm-dialog";
 import { computeAssetValueIls } from "@/lib/savings-asset-value";
 
 export type SavingsSummaryData = {
@@ -161,6 +162,7 @@ function AssetEntryRow({
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
+  const [ask, confirmDialog] = useConfirm();
   const [editing, setEditing] = useState(false);
   const isWithdrawal = entry.type === "WITHDRAWAL";
   const [form, setForm] = useState({
@@ -210,9 +212,13 @@ function AssetEntryRow({
     });
   };
 
-  const remove = () => {
-    if (!confirm(isWithdrawal ? "حذف هذا السحب من السجل؟" : "حذف هذا الشراء من السجل؟"))
-      return;
+  const remove = async () => {
+    const ok = await ask({
+      title: isWithdrawal ? "حذف هذا السحب من السجل؟" : "حذف هذا الشراء من السجل؟",
+      description: "تُحذف أيضاً المعاملة المرتبطة به من المعاملات والتقارير.",
+      destructive: true,
+    });
+    if (!ok) return;
     startTransition(async () => {
       const res = await fetch(
         `/api/savings/assets/${assetId}/entries/${entry.id}`,
@@ -350,12 +356,10 @@ function AssetEntryRow({
           isWithdrawal ? "text-red-700" : "text-slate-800"
         }`}
       >
-        {isWithdrawal ? "−" : ""}
-        {formatCurrency(entry.valueIls)}
+        {isWithdrawal ? formatSignedCurrency(-entry.valueIls) : formatCurrency(entry.valueIls)}
         {entry.bankFeeIls != null && entry.bankFeeIls > 0 && (
           <span className="block text-[10px] font-normal text-slate-500">
-            {isWithdrawal ? "−" : "+"}
-            {formatCurrency(entry.bankFeeIls)} رسوم
+            {formatSignedCurrency(isWithdrawal ? -entry.bankFeeIls : entry.bankFeeIls)} رسوم
           </span>
         )}
       </span>
@@ -377,6 +381,7 @@ function AssetEntryRow({
       >
         <Trash2 className="h-3.5 w-3.5" />
       </button>
+      {confirmDialog}
     </div>
   );
 }
@@ -950,7 +955,7 @@ export function SavingsSummary({ data }: { data: SavingsSummaryData }) {
   return (
     <div className="space-y-6">
       {/* KPI row — mirrors Excel summary */}
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5 [&>*:last-child]:col-span-2 sm:[&>*:last-child]:col-span-1">
         {[
           {
             label: "ادخار هذا الشهر",
@@ -995,7 +1000,7 @@ export function SavingsSummary({ data }: { data: SavingsSummaryData }) {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: i * 0.04 }}
           >
-            <Card className="overflow-hidden shadow-sm transition hover:shadow-md">
+            <Card className="h-full overflow-hidden">
               <CardContent className="p-4">
                 <div className="flex items-center gap-2">
                   <div className={`rounded-lg p-2 ${kpi.bg}`}>
@@ -1003,7 +1008,7 @@ export function SavingsSummary({ data }: { data: SavingsSummaryData }) {
                   </div>
                   <p className="text-xs text-slate-500">{kpi.label}</p>
                 </div>
-                <p className={`mt-2 text-xl font-extrabold sm:text-2xl ${kpi.color}`}>
+                <p className={`num mt-2 truncate text-lg font-bold sm:text-2xl ${kpi.color}`}>
                   {"isCount" in kpi && kpi.isCount
                     ? kpi.value
                     : formatCurrency(kpi.value as number)}
@@ -1081,7 +1086,7 @@ export function SavingsSummary({ data }: { data: SavingsSummaryData }) {
             </CardContent>
           </Card>
         ) : (
-          <div className="grid gap-4 sm:grid-cols-1 md:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-1 md:grid-cols-2">
             {assets.map((asset) => (
               <AssetCard
                 key={asset.id}
@@ -1134,7 +1139,7 @@ export function SavingsSummary({ data }: { data: SavingsSummaryData }) {
 
       {/* Charts */}
       {hasChartData && (
-        <div className="grid gap-6 lg:grid-cols-2">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           <Card>
             <CardHeader>
               <CardTitle className="text-base">توزيع المتراكم</CardTitle>

@@ -1,5 +1,6 @@
 "use client";
 
+import { useCallback, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -52,4 +53,41 @@ export function ConfirmDialog({
       </DialogContent>
     </Dialog>
   );
+}
+
+type ConfirmOptions = {
+  title: string;
+  description?: React.ReactNode;
+  confirmLabel?: string;
+  destructive?: boolean;
+};
+
+/**
+ * Promise-based replacement for window.confirm:
+ *   const [ask, confirmDialog] = useConfirm();
+ *   if (!(await ask({ title: "حذف؟", destructive: true }))) return;
+ *   ...render {confirmDialog} once in the component.
+ */
+export function useConfirm(): [(opts: ConfirmOptions) => Promise<boolean>, React.ReactNode] {
+  const [state, setState] = useState<(ConfirmOptions & { resolve: (ok: boolean) => void }) | null>(null);
+  const ask = useCallback(
+    (opts: ConfirmOptions) => new Promise<boolean>((resolve) => setState({ ...opts, resolve })),
+    []
+  );
+  const close = (ok: boolean) => {
+    state?.resolve(ok);
+    setState(null);
+  };
+  const dialog = (
+    <ConfirmDialog
+      open={state != null}
+      onOpenChange={(open) => !open && close(false)}
+      title={state?.title ?? ""}
+      description={state?.description}
+      confirmLabel={state?.confirmLabel ?? (state?.destructive ? "حذف" : "تأكيد")}
+      destructive={state?.destructive}
+      onConfirm={() => close(true)}
+    />
+  );
+  return [ask, dialog];
 }

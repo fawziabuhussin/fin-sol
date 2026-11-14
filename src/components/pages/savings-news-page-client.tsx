@@ -95,7 +95,7 @@ export function SavingsNewsPageClient() {
         ))}
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {items.map((item, i) => (
           <motion.div
             key={item.id}

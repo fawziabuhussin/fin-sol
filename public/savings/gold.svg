@@ -12,5 +12,5 @@
   </defs>
   <circle cx="60" cy="60" r="52" fill="url(#goldGrad)" stroke="#92400E" stroke-width="2"/>
   <ellipse cx="48" cy="42" rx="22" ry="14" fill="url(#goldShine)"/>
-  <text x="60" y="68" text-anchor="middle" font-size="28" font-weight="800" fill="#78350F" font-family="system-ui,sans-serif">ª</text>
+  <text x="60" y="68" text-anchor="middle" font-size="28" font-weight="800" fill="#78350F" font-family="system-ui,sans-serif">Au</text>
 </svg>

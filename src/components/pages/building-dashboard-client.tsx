@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
+import { monthLabel } from "@/lib/finance-labels";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
@@ -81,6 +82,12 @@ type Summary = {
   }[];
   chart: { paid: number; remaining: number };
 };
+
+/** "1 سبتمبر 2026" — raw ISO dates render reversed inside RTL text. */
+function formatIsoDay(iso: string) {
+  const [y, m, d] = iso.slice(0, 10).split("-").map(Number);
+  return y && m && d ? `${d} ${monthLabel(m)} ${y}` : iso;
+}
 
 function ContractorCard({
   c,
@@ -357,7 +364,7 @@ export function BuildingDashboardClient({
         </div>
       </motion.div>
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
         {[
           { label: "الميزانية", value: summary.master.totalBudget, color: "text-slate-900" },
           { label: "المدفوع", value: summary.master.paidToDate, color: "text-emerald-700" },
@@ -375,11 +382,12 @@ export function BuildingDashboardClient({
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: i * 0.05 }}
+            className={"hint" in kpi && kpi.hint ? "order-last col-span-2 sm:order-none sm:col-span-1" : undefined}
           >
-            <Card className="transform-gpu shadow-md transition hover:-translate-y-0.5 hover:shadow-lg">
+            <Card className="h-full">
               <CardContent className="p-4">
-                <p className="text-sm text-slate-500">{kpi.label}</p>
-                <p className={`text-2xl font-extrabold ${kpi.color}`}>
+                <p className="text-xs text-slate-500 sm:text-sm">{kpi.label}</p>
+                <p className={`num mt-0.5 text-xl font-bold sm:text-2xl ${kpi.color}`}>
                   {typeof kpi.value === "number" ? formatCurrency(kpi.value) : kpi.value}
                 </p>
                 {"hint" in kpi && kpi.hint ? (
@@ -416,7 +424,7 @@ export function BuildingDashboardClient({
         </div>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <Card>
           <CardHeader>
             <CardTitle>الميزانية — مدفوع vs متبقي</CardTitle>
@@ -476,29 +484,28 @@ export function BuildingDashboardClient({
               </span>
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-2">
-            {summary.upcomingInstallments.slice(0, 8).map((inst) => (
-              <div
-                key={inst.id}
-                className="flex flex-col gap-2 rounded-xl border border-slate-100 p-3 sm:flex-row sm:items-center sm:justify-between"
-              >
-                <div>
+          <CardContent>
+            <ul className="divide-y divide-slate-100">
+              {summary.upcomingInstallments.slice(0, 8).map((inst) => (
+                <li key={inst.id}>
                   <Link
                     href={`/projects/${inst.contractorId}`}
-                    className="font-bold text-slate-900 hover:underline"
+                    className="-mx-2 flex items-center justify-between gap-3 rounded-xl px-2 py-2.5 hover:bg-slate-50"
                   >
-                    {inst.contractorName}
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-semibold text-slate-900" dir="auto">
+                        {inst.contractorName}
+                      </span>
+                      <span className="block truncate text-xs text-slate-500">
+                        {inst.label} · {formatIsoDay(inst.dueDate)}
+                        {inst.profession && ` · ${inst.profession}`}
+                      </span>
+                    </span>
+                    <span className="num shrink-0 text-sm font-bold text-amber-700">{formatCurrency(inst.amount)}</span>
                   </Link>
-                  <p className="text-xs text-slate-500">
-                    {inst.label} · {inst.dueDate}
-                    {inst.profession && ` · ${inst.profession}`}
-                  </p>
-                </div>
-                <p className="font-extrabold text-amber-700">
-                  {formatCurrency(inst.amount)}
-                </p>
-              </div>
-            ))}
+                </li>
+              ))}
+            </ul>
           </CardContent>
         </Card>
       )}

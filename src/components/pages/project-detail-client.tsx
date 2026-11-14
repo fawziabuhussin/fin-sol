@@ -30,6 +30,8 @@ import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { BuildingPaymentSheet } from "@/components/forms/building-payment-sheet";
 import { formatCurrency } from "@/lib/utils";
+import { localTodayIso } from "@/lib/dates";
+import { useConfirm } from "@/components/ui/confirm-dialog";
 import { cn } from "@/lib/utils";
 
 type Installment = {
@@ -110,11 +112,13 @@ function PayCheckbox({
   paid,
   label,
   amount,
+  dueDate,
 }: {
   installmentId: string;
   paid: boolean;
   label: string;
   amount: number;
+  dueDate: string;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -126,7 +130,8 @@ function PayCheckbox({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           paid: !paid,
-          occurredAt: new Date().toISOString().slice(0, 10),
+          // Book on the due date once it has arrived (late payments stay in their month), else today.
+          occurredAt: dueDate <= localTodayIso() ? dueDate : localTodayIso(),
         }),
       });
       if (!res.ok) {
@@ -168,6 +173,7 @@ export function ProjectDetailClient({
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
+  const [ask, confirmDialog] = useConfirm();
   const isContractor =
     detail.kind === "BUILD_CONTRACTOR" || Boolean(detail.parent);
   const [selectedPlanId, setSelectedPlanId] = useState(
@@ -200,7 +206,7 @@ export function ProjectDetailClient({
   const [addForm, setAddForm] = useState({
     label: "",
     amount: plan?.recurringAmount ?? 0,
-    dueDate: new Date().toISOString().slice(0, 10),
+    dueDate: localTodayIso(),
     notes: "",
   });
 
@@ -242,14 +248,13 @@ export function ProjectDetailClient({
     });
   };
 
-  const deleteInstallment = (id: string, label: string) => {
-    if (
-      !confirm(
-        `حذف «${label}»؟ سيتم حذف الدفعة من الجدول وإزالة المدفوع المرتبط بها من السجل.`
-      )
-    ) {
-      return;
-    }
+  const deleteInstallment = async (id: string, label: string) => {
+    const ok = await ask({
+      title: `حذف «${label}»؟`,
+      description: "تُحذف الدفعة من الجدول ويُزال المدفوع المرتبط بها من السجل.",
+      destructive: true,
+    });
+    if (!ok) return;
     startTransition(async () => {
       const res = await fetch(`/api/installments/${id}`, { method: "DELETE" });
       if (!res.ok) {
@@ -306,11 +311,13 @@ export function ProjectDetailClient({
     });
   };
 
-  const deleteTransaction = (tx: ProjectDetail["transactions"][0]) => {
-    const msg = tx.installmentId
-      ? "حذف هذا المدفوع من السجل؟ ستُعاد الدفعة في الجدول إلى «معلّقة»."
-      : "حذف هذا المدفوع من السجل؟";
-    if (!confirm(msg)) return;
+  const deleteTransaction = async (tx: ProjectDetail["transactions"][0]) => {
+    const ok = await ask({
+      title: "حذف هذا المدفوع من السجل؟",
+      description: tx.installmentId ? "ستُعاد الدفعة في الجدول إلى «معلّقة»." : undefined,
+      destructive: true,
+    });
+    if (!ok) return;
     startTransition(async () => {
       const res = await fetch(`/api/transactions/${tx.id}`, { method: "DELETE" });
       if (!res.ok) {
@@ -339,18 +346,21 @@ export function ProjectDetailClient({
       setAddForm({
         label: "",
         amount: plan?.recurringAmount ?? 0,
-        dueDate: new Date().toISOString().slice(0, 10),
+        dueDate: localTodayIso(),
         notes: "",
       });
       router.refresh();
     });
   };
 
-  const deletePlan = () => {
+  const deletePlan = async () => {
     if (!plan) return;
-    if (!confirm("حذف خطة الدفع وكل دفعاتها؟ سيتم أيضاً حذف المدفوعات المسجّلة.")) {
-      return;
-    }
+    const ok = await ask({
+      title: "حذف خطة الدفع وكل دفعاتها؟",
+      description: "تُحذف أيضاً المدفوعات المسجّلة منها.",
+      destructive: true,
+    });
+    if (!ok) return;
     startTransition(async () => {
       const res = await fetch(`/api/payment-plans/${plan.id}`, { method: "DELETE" });
       if (!res.ok) {
@@ -706,6 +716,7 @@ export function ProjectDetailClient({
                       paid={isPaid}
                       label={inst.label}
                       amount={inst.amount}
+                      dueDate={inst.dueDate}
                     />
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
@@ -961,6 +972,7 @@ export function ProjectDetailClient({
           )}
         </CardContent>
       </Card>
+      {confirmDialog}
     </div>
   );
 }

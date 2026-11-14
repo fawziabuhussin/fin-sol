@@ -1,6 +1,7 @@
 "use client";
 
 import { useTransition } from "react";
+import { localTodayIso } from "@/lib/dates";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -33,7 +34,7 @@ export function SavingsPageClient({ items }: { items: SavingsRow[] }) {
       monthlyContribution: 0,
       targetAmount: undefined,
       payoutDate: "",
-      startDate: new Date().toISOString().slice(0, 10),
+      startDate: localTodayIso(),
       status: "ACTIVE",
     },
   });
@@ -64,7 +65,7 @@ export function SavingsPageClient({ items }: { items: SavingsRow[] }) {
           <CardTitle>إضافة خطة جديدة</CardTitle>
         </CardHeader>
         <CardContent>
-          <form className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5" onSubmit={onSubmit}>
+          <form className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5" onSubmit={onSubmit}>
             <div>
               <Label>العنوان</Label>
               <Input {...form.register("title")} />

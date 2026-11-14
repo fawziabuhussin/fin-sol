@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, useTransition } from "react";
+import { localTodayIso } from "@/lib/dates";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
@@ -66,7 +67,7 @@ export function BuildingPaymentSheet({
   const [payFirstNow, setPayFirstNow] = useState(false);
   const [payeeName, setPayeeName] = useState(defaultPayee);
   const [startDate, setStartDate] = useState(
-    new Date().toISOString().slice(0, 10)
+    localTodayIso()
   );
   const [paymentMethodId, setPaymentMethodId] = useState("");
   const [planTitle, setPlanTitle] = useState("");
@@ -79,7 +80,7 @@ export function BuildingPaymentSheet({
       setFirstPaymentAmount(plan.firstPaymentAmount ?? 0);
       setPayFirstNow(false);
       setPayeeName(plan.payeeName ?? defaultPayee);
-      setStartDate(plan.startDate ?? new Date().toISOString().slice(0, 10));
+      setStartDate(plan.startDate ?? localTodayIso());
       setPaymentMethodId(plan.paymentMethodId ?? "");
       setPlanTitle(plan.title ?? "");
     } else {
@@ -90,7 +91,7 @@ export function BuildingPaymentSheet({
       setFirstPaymentAmount(0);
       setPayFirstNow(false);
       setPayeeName(defaultPayee);
-      setStartDate(new Date().toISOString().slice(0, 10));
+      setStartDate(localTodayIso());
       setPaymentMethodId("");
     }
   };

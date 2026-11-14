@@ -73,7 +73,7 @@ export function KupotPageClient({ data }: { data: KupotPageData }) {
 
       <SavingsTabs />
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {[
           {
             label: "חלק העובד",
@@ -164,7 +164,7 @@ export function KupotPageClient({ data }: { data: KupotPageData }) {
                 </div>
               </CardHeader>
               <CardContent className="space-y-5 p-5">
-                <div className="grid gap-4 sm:grid-cols-3">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                   <div className="rounded-2xl border border-violet-100 bg-violet-50/60 p-5">
                     <p className="text-sm font-semibold text-violet-800">חלקך</p>
                     <p className="mt-2 text-2xl font-extrabold text-violet-900">
