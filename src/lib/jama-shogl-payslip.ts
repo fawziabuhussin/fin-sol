@@ -10,6 +10,7 @@ export const JAMA_SHOGL_NAMES = [
 
 export function isJamaShoglEmployer(name: string) {
   const n = name.trim();
+  if (!n) return false; // "".includes() is true for every hint
   return JAMA_SHOGL_NAMES.some(
     (hint) => n.includes(hint) || hint.includes(n)
   );

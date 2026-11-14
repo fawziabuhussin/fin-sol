@@ -43,7 +43,7 @@ export const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
     label: "الادخار والدخل",
     items: [
       { href: "/savings", label: "الجمعية والادخار", short: "الادخار", icon: PiggyBank, description: "جمعيات، ذهب، دولار" },
-      { href: "/salary", label: "متابعة الراتب", short: "الراتب", icon: WalletCards, description: "قسائم الرواتب" },
+      { href: "/salary", label: "الراتب", short: "الراتب", icon: WalletCards, description: "قسائم الرواتب" },
       { href: "/showcase", label: "التقرير السنوي", short: "التقرير", icon: Presentation, description: "سنتك بالأرقام" },
     ],
   },

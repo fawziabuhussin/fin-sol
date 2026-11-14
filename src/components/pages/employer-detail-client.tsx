@@ -2,212 +2,132 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
-import { motion } from "framer-motion";
+import { useRef, useState, useTransition } from "react";
 import {
   ArrowRight,
   Banknote,
-  Briefcase,
-  Check,
   ChevronLeft,
   ChevronRight,
-  FileUp,
+  FileText,
+  Loader2,
+  MoreHorizontal,
   Pencil,
-  Save,
+  Plus,
+  Settings2,
   Trash2,
-  X,
+  Upload,
+  UserX,
+  UserCheck,
 } from "lucide-react";
-import { SlipBreakdownCard } from "@/components/salary/slip-breakdown-card";
-import type { SalarySlipBreakdown } from "@/lib/payslip-types";
 import { toast } from "sonner";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
+import { Label } from "@/components/ui/label";
 import {
-  breakdownFromBaseForm,
-  monthDefaultsFromBase,
-  partsFromBreakdown,
-} from "@/lib/salary-defaults";
-import { formatCurrency } from "@/lib/utils";
-import { cn } from "@/lib/utils";
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogBody,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import {
+  SLIP_FIELDS,
+  SlipReviewDialog,
+  parsePayslipFile,
+  type ParseResponse,
+  type SlipValues,
+} from "@/components/salary/slip-review-dialog";
+import { breakdownFromBaseForm, monthDefaultsFromBase, partsFromBreakdown } from "@/lib/salary-defaults";
+import { cn, formatCurrency, formatCurrencyPrecise } from "@/lib/utils";
+import type { getEmployerDetail } from "@/lib/tenant-data";
 
-type MonthRow = {
-  month: number;
-  label: string;
-  slipId: string | null;
-  exists: boolean;
-  worked: boolean;
-  paid: boolean;
-  paidAt: string | null;
-  gross: number;
-  net: number;
-  tax: number;
-  pension: number;
-  kerenHishtalmut: number;
-  fees: number;
-  bonus: number;
-  effectiveNet: number;
-  notes: string | null;
-  slipBreakdown: SalarySlipBreakdown | null;
-};
+type Detail = NonNullable<Awaited<ReturnType<typeof getEmployerDetail>>>;
+type MonthRow = Detail["months"][number];
 
-type EmployerDetail = {
-  id: string;
-  name: string;
-  role: string | null;
-  color: string | null;
-  startDate: string | null;
-  base: {
-    gross: number;
-    net: number;
-    tax: number;
-    pension: number;
-    keren: number;
-    fees: number;
-    bonus: number;
-    slipBreakdown: SalarySlipBreakdown | null;
-  };
-  year: number;
-  months: MonthRow[];
-  totals: {
-    gross: number;
-    net: number;
-    tax: number;
-    pension: number;
-    fees: number;
-    bonus: number;
-    workedMonths: number;
-    stoppedMonths: number;
-    paidMonths: number;
-  };
-};
+const valuesOf = (r: Pick<MonthRow, SlipKeys>): SlipValues => ({
+  gross: r.gross,
+  net: r.net,
+  tax: r.tax,
+  pension: r.pension,
+  kerenHishtalmut: r.kerenHishtalmut,
+  fees: r.fees,
+  bonus: r.bonus,
+});
+type SlipKeys = "gross" | "net" | "tax" | "pension" | "kerenHishtalmut" | "fees" | "bonus";
 
-const FIELD_LABELS: Record<string, string> = {
-  gross: "إجمالي (ברוטו)",
-  net: "صافي (נטו)",
-  tax: "מסים (סה״כ)",
-  pension: "פנסיה — עובד",
-  kerenHishtalmut: "קרן השתלמות — עובד",
-  fees: "خصومات/رسوم",
-  bonus: "إضافات/מكافآت",
-};
-
-const BASE_FIELD_KEYS = [
-  "baseGross",
-  "baseNet",
-  "baseTax",
-  "basePension",
-  "baseKeren",
-  "baseFees",
-  "baseBonus",
-] as const;
-
-const BASE_FIELD_LABELS: Record<(typeof BASE_FIELD_KEYS)[number], string> = {
-  baseGross: FIELD_LABELS.gross,
-  baseNet: FIELD_LABELS.net,
-  baseTax: FIELD_LABELS.tax,
-  basePension: FIELD_LABELS.pension,
-  baseKeren: FIELD_LABELS.kerenHishtalmut,
-  baseFees: FIELD_LABELS.fees,
-  baseBonus: FIELD_LABELS.bonus,
-};
-
-const TAX_PART_LABELS = {
-  taxNationalInsurance: "ביטוח לאומי",
-  taxHealthInsurance: "מס בריאות",
-  taxIncome: "מס הכנסה",
-} as const;
-
-function previewBaseBreakdown(baseForm: {
-  baseGross: number;
-  baseNet: number;
-  baseTax: number;
-  basePension: number;
-  baseKeren: number;
-  baseFees: number;
-  baseBonus: number;
-  taxNationalInsurance: number;
-  taxHealthInsurance: number;
-  taxIncome: number;
-}) {
-  return breakdownFromBaseForm(
-    {
-      gross: baseForm.baseGross,
-      net: baseForm.baseNet,
-      tax: baseForm.baseTax,
-      pension: baseForm.basePension,
-      keren: baseForm.baseKeren,
-      fees: baseForm.baseFees,
-      bonus: baseForm.baseBonus,
-    },
-    {
-      taxNationalInsurance: baseForm.taxNationalInsurance,
-      taxHealthInsurance: baseForm.taxHealthInsurance,
-      taxIncome: baseForm.taxIncome,
-    }
-  );
+function statusOf(row: MonthRow, future: boolean, beforeStart: boolean) {
+  if (!row.exists) {
+    if (future) return { label: "لم يحن بعد", tone: "text-slate-400" };
+    if (beforeStart) return { label: "لا راتب", tone: "text-slate-400" };
+    return { label: "لم يُسجّل بعد", tone: "text-amber-600" };
+  }
+  if (!row.worked) return { label: "لم يعمل", tone: "text-slate-400" };
+  return row.paid ? { label: "مقبوض", tone: "text-emerald-600" } : { label: "بانتظار القبض", tone: "text-amber-600" };
 }
 
-export function EmployerDetailClient({ detail }: { detail: EmployerDetail }) {
+export function EmployerDetailClient({
+  detail,
+  currentPeriod,
+  existing,
+}: {
+  detail: Detail;
+  currentPeriod: { year: number; month: number };
+  existing: Record<string, number>;
+}) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
-  const [editingMonth, setEditingMonth] = useState<number | null>(null);
-  const [editForm, setEditForm] = useState<
-    Partial<MonthRow> & { slipBreakdown?: SalarySlipBreakdown | null }
-  >({});
-  const [parseLoading, setParseLoading] = useState(false);
-  const [editBase, setEditBase] = useState(false);
-  const taxPartsInit = partsFromBreakdown(detail.base.slipBreakdown);
-  const [baseForm, setBaseForm] = useState({
-    baseGross: detail.base.gross,
-    baseNet: detail.base.net,
-    baseTax: detail.base.tax,
-    basePension: detail.base.pension,
-    baseKeren: detail.base.keren,
-    baseFees: detail.base.fees,
-    baseBonus: detail.base.bonus,
-    role: detail.role ?? "",
-    ...taxPartsInit,
-  });
+  const seq = useRef(0);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const uploadMonth = useRef<number | null>(null);
+  const [parsing, setParsing] = useState(false);
+  const [review, setReview] = useState<{ key: number; row: MonthRow | null; month: number; parsed: ParseResponse | null } | null>(null);
+  const [baseOpen, setBaseOpen] = useState<number | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<MonthRow | null>(null);
 
-  const saveMonth = (month: number, values: Partial<MonthRow>, worked: boolean) => {
-    startTransition(async () => {
-      const res = await fetch("/api/salary", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          employerId: detail.id,
-          periodYear: detail.year,
-          periodMonth: month,
-          worked,
-          gross: values.gross ?? 0,
-          net: values.net ?? 0,
-          tax: values.tax ?? 0,
-          pension: values.pension ?? 0,
-          kerenHishtalmut: values.kerenHishtalmut ?? 0,
-          fees: values.fees ?? 0,
-          bonus: values.bonus ?? 0,
-          slipBreakdown: values.slipBreakdown ?? undefined,
-        }),
-      });
-      if (!res.ok) {
-        toast.error("فشل الحفظ");
-        return;
-      }
-      toast.success("تم حفظ الشهر");
-      setEditingMonth(null);
-      router.refresh();
-    });
+  const employerOption = [{ id: detail.id, name: detail.name, active: detail.active }];
+  const curIdx = currentPeriod.year * 12 + currentPeriod.month;
+  const isFuture = (m: number) => detail.year * 12 + m > curIdx;
+  const recorded = detail.months.filter((m) => m.exists && m.worked);
+  const pendingPay = recorded.filter((m) => !m.paid && !isFuture(m.month));
+  // Months before the first recorded one (e.g. job started mid-year) aren't "missing".
+  const firstMonth = detail.months.find((m) => m.exists)?.month ?? (detail.year === currentPeriod.year ? currentPeriod.month : 13);
+
+  const openReview = (row: MonthRow | null, month: number, parsed: ParseResponse | null = null) =>
+    setReview({ key: ++seq.current, row, month, parsed });
+
+  const startUpload = (month: number | null) => {
+    uploadMonth.current = month;
+    fileInput.current?.click();
   };
 
-  const toggleWorked = (row: MonthRow) => {
-    saveMonth(row.month, row, !row.worked);
+  const onFile = async (file: File) => {
+    setParsing(true);
+    const { data, error } = await parsePayslipFile(file);
+    setParsing(false);
+    const month = uploadMonth.current ?? data?.periodMonth ?? currentPeriod.month;
+    const row = detail.months.find((m) => m.month === month) ?? null;
+    if (error || !data) {
+      toast.error(error ?? "تعذّرت قراءة القسيمة");
+      return openReview(row?.exists ? row : null, month);
+    }
+    // A month picked from a row wins over the month read from the file.
+    openReview(row?.exists ? row : null, month, uploadMonth.current ? { ...data, periodMonth: month, periodYear: detail.year } : data);
   };
 
-  const togglePaid = (row: MonthRow) => {
+  const post = (row: MonthRow, patch: { worked?: boolean; paid?: boolean }, msg: string) =>
     startTransition(async () => {
+      const values = row.exists ? valuesOf(row) : valuesOf({ ...monthDefaultsFromBase(detail.base) });
       const res = await fetch("/api/salary", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -215,472 +135,367 @@ export function EmployerDetailClient({ detail }: { detail: EmployerDetail }) {
           employerId: detail.id,
           periodYear: detail.year,
           periodMonth: row.month,
-          worked: row.worked,
-          paid: !row.paid,
-          gross: row.gross,
-          net: row.net,
-          tax: row.tax,
-          pension: row.pension,
-          kerenHishtalmut: row.kerenHishtalmut,
-          fees: row.fees,
-          bonus: row.bonus,
+          worked: patch.worked ?? row.worked,
+          ...(patch.paid !== undefined ? { paid: patch.paid } : {}),
+          ...values,
         }),
       });
-      if (!res.ok) {
-        toast.error("فشل التحديث");
-        return;
-      }
-      toast.success(row.paid ? "تم إلغاء القبض" : "تم تسجيل القبض");
+      if (!res.ok) return void toast.error("تعذّر التحديث");
+      toast.success(msg);
       router.refresh();
     });
-  };
 
-  const deleteSlip = (row: MonthRow) => {
-    if (!row.slipId) return;
-    if (!confirm(`حذف راتب ${row.label}؟`)) return;
+  const deleteSlip = () =>
     startTransition(async () => {
-      const res = await fetch(`/api/salary/${row.slipId}`, { method: "DELETE" });
-      if (!res.ok) {
-        toast.error("فشل الحذف");
-        return;
-      }
-      toast.success("تم حذف الراتب");
+      if (!confirmDelete?.slipId) return;
+      const res = await fetch(`/api/salary/${confirmDelete.slipId}`, { method: "DELETE" });
+      if (!res.ok) return void toast.error("تعذّر الحذف");
+      toast.success(`حُذف راتب ${confirmDelete.label}`);
+      setConfirmDelete(null);
       router.refresh();
     });
-  };
 
-  const startEdit = (row: MonthRow) => {
-    setEditingMonth(row.month);
-    setEditForm(row.exists ? { ...row } : monthDefaultsFromBase(detail.base));
-  };
+  return (
+    <div className="mx-auto max-w-4xl space-y-5">
+      <input
+        ref={fileInput}
+        type="file"
+        accept="application/pdf,.pdf"
+        className="sr-only"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) onFile(f);
+          e.target.value = "";
+        }}
+      />
+      <Link href="/salary" className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-800">
+        <ArrowRight className="h-4 w-4" /> الراتب
+      </Link>
 
-  const uploadPayslip = async (month: number, file: File) => {
-    setParseLoading(true);
-    try {
-      const form = new FormData();
-      form.append("file", file);
-      const res = await fetch("/api/salary/parse", { method: "POST", body: form });
-      const data = await res.json();
-      if (!res.ok) {
-        toast.error(data.error ?? "فشل قراءة التלוש");
-        return;
-      }
-      setEditForm((f) => ({
-        ...f,
-        gross: data.gross ?? f.gross,
-        net: data.net ?? f.net,
-        tax: data.tax ?? f.tax,
-        pension: data.pension ?? f.pension,
-        kerenHishtalmut: data.kerenHishtalmut ?? f.kerenHishtalmut,
-        fees: data.fees ?? f.fees,
-        slipBreakdown: data.breakdown ?? null,
-      }));
-      toast.success(
-        data.confidence === "high"
-          ? "تم استخراج التלוש بنجاح"
-          : "تم الاستخراج — راجع الأرقام قبل الحفظ"
-      );
-    } catch {
-      toast.error("فشل رفع الملف");
-    } finally {
-      setParseLoading(false);
-    }
-  };
+      {/* Header */}
+      <div className="flex flex-wrap items-center gap-3">
+        <span
+          className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl text-lg font-bold"
+          style={{ backgroundColor: `${detail.color || "#4F46E5"}1a`, color: detail.color || "#4F46E5" }}
+        >
+          {detail.name.trim().charAt(0)}
+        </span>
+        <div className="min-w-0 flex-1">
+          <h1 className="truncate text-xl font-bold tracking-tight text-slate-900 sm:text-2xl" dir="auto">{detail.name}</h1>
+          <p className="truncate text-sm text-slate-500">{detail.role || (detail.active ? "جهة عمل نشطة" : "متوقفة")}</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="icon-sm" className="sm:hidden" onClick={() => setBaseOpen(++seq.current)} aria-label="الراتب الأساسي">
+            <Settings2 className="h-4 w-4" />
+          </Button>
+          <Button variant="outline" className="hidden sm:inline-flex" onClick={() => setBaseOpen(++seq.current)}>
+            <Settings2 className="h-4 w-4" /> الراتب الأساسي
+          </Button>
+          <Button variant="brand" onClick={() => startUpload(null)} disabled={parsing}>
+            {parsing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />} رفع قسيمة
+          </Button>
+        </div>
+      </div>
 
-  const saveBase = () => {
-    const breakdown = previewBaseBreakdown(baseForm);
+      {/* Year summary */}
+      <div className="relative overflow-hidden rounded-3xl bg-[#0B1220] p-5 text-white shadow-float sm:p-6">
+        <div aria-hidden className="pointer-events-none absolute -left-20 -top-24 h-64 w-64 rounded-full bg-emerald-500/20 blur-3xl" />
+        <div className="relative flex items-start justify-between gap-3">
+          <div>
+            <p className="text-sm text-white/60">صافي {detail.year}</p>
+            <p className="num mt-1 text-4xl font-bold tracking-tight">{formatCurrency(recorded.reduce((s, m) => s + m.effectiveNet, 0))}</p>
+          </div>
+          <div className="flex items-center gap-1 rounded-xl bg-white/10 p-1">
+            <button
+              type="button"
+              onClick={() => router.push(`/salary/${detail.id}?year=${detail.year - 1}`)}
+              className="rounded-lg p-1.5 text-white/70 hover:bg-white/10 hover:text-white"
+              aria-label="السنة السابقة"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </button>
+            <span className="num px-1 text-sm font-semibold">{detail.year}</span>
+            <button
+              type="button"
+              onClick={() => router.push(`/salary/${detail.id}?year=${detail.year + 1}`)}
+              className="rounded-lg p-1.5 text-white/70 hover:bg-white/10 hover:text-white"
+              aria-label="السنة التالية"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+        <dl className="relative mt-5 grid grid-cols-3 divide-x divide-white/10 rounded-2xl bg-white/[0.06] py-3 ring-1 ring-inset ring-white/10">
+          {[
+            { label: "أشهر مسجّلة", value: `${recorded.length}` },
+            { label: "ضرائب", value: formatCurrency(recorded.reduce((s, m) => s + m.tax, 0)) },
+            { label: "تقاعد واستكمال", value: formatCurrency(recorded.reduce((s, m) => s + m.pension + m.kerenHishtalmut, 0)) },
+          ].map((s) => (
+            <div key={s.label} className="px-2 text-center">
+              <dt className="text-[11px] text-white/55">{s.label}</dt>
+              <dd className="num mt-0.5 text-sm font-semibold sm:text-base">{s.value}</dd>
+            </div>
+          ))}
+        </dl>
+      </div>
 
+      {pendingPay.length > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+          <p className="text-sm text-amber-900">
+            <span className="font-semibold">{pendingPay.length === 1 ? `راتب ${pendingPay[0]!.label}` : `${pendingPay.length} رواتب`}</span> بانتظار تأكيد القبض
+          </p>
+          {pendingPay.length === 1 && (
+            <Button size="sm" onClick={() => post(pendingPay[0]!, { paid: true }, `سُجّل قبض راتب ${pendingPay[0]!.label}`)} disabled={isPending}>
+              <Banknote className="h-4 w-4" /> تم القبض
+            </Button>
+          )}
+        </div>
+      )}
+
+      {/* Months */}
+      <Card className="p-2 sm:p-3">
+        <div className="px-3 pb-1 pt-3">
+          <h2 className="text-sm font-semibold text-slate-900">رواتب {detail.year}</h2>
+          <p className="mt-0.5 text-xs text-slate-500">كل راتب يُضاف تلقائياً إلى دخل شهره في المعاملات ولوحة التحكم.</p>
+        </div>
+        <ul className="mt-1 divide-y divide-slate-100/80">
+          {detail.months.map((row) => {
+            const future = isFuture(row.month);
+            const beforeStart = row.month < firstMonth;
+            const st = statusOf(row, future, beforeStart);
+            return (
+              <li key={row.month} className={cn("flex items-center gap-3 rounded-xl px-2 py-3 sm:px-3", (future || beforeStart) && !row.exists && "opacity-60")}>
+                <span
+                  className={cn(
+                    "num flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-sm font-bold",
+                    row.exists && row.worked ? (row.paid ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700") : "bg-slate-100 text-slate-400"
+                  )}
+                >
+                  {row.month}
+                </span>
+                <button
+                  type="button"
+                  className="min-w-0 flex-1 text-start"
+                  onClick={() => openReview(row.exists ? row : null, row.month)}
+                >
+                  <span className="flex items-center gap-1.5 text-sm font-semibold text-slate-900">
+                    {row.label}
+                    {row.slipBreakdown && <FileText className="h-3.5 w-3.5 text-indigo-500" aria-label="من قسيمة" />}
+                  </span>
+                  <span className={cn("block text-xs font-medium", st.tone)}>
+                    {st.label}
+                    {row.exists && row.worked && row.paid && row.paidAt ? <span className="text-slate-400"> · {row.paidAt.slice(8, 10)}/{row.paidAt.slice(5, 7)}</span> : null}
+                  </span>
+                </button>
+                {row.exists && row.worked ? (
+                  <span className="num shrink-0 text-sm font-bold text-slate-900">{formatCurrencyPrecise(row.effectiveNet)}</span>
+                ) : !row.exists && !future && !beforeStart ? (
+                  <Button size="sm" variant="secondary" onClick={() => openReview(null, row.month)}>
+                    <Plus className="h-3.5 w-3.5" /> إضافة
+                  </Button>
+                ) : null}
+                {row.exists && row.worked && !row.paid && !future && (
+                  <Button
+                    size="icon-sm"
+                    variant="outline"
+                    className="text-emerald-600"
+                    aria-label={`تأكيد قبض ${row.label}`}
+                    disabled={isPending}
+                    onClick={() => post(row, { paid: true }, `سُجّل قبض راتب ${row.label}`)}
+                  >
+                    <Banknote className="h-4 w-4" />
+                  </Button>
+                )}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon-sm" className="shrink-0 text-slate-400" aria-label={`خيارات ${row.label}`}>
+                      <MoreHorizontal className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-56">
+                    <DropdownMenuItem onSelect={() => openReview(row.exists ? row : null, row.month)}>
+                      <Pencil /> {row.exists ? "تعديل الأرقام" : "إدخال الراتب"}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onSelect={() => startUpload(row.month)}>
+                      <Upload /> قراءة من قسيمة PDF
+                    </DropdownMenuItem>
+                    {row.exists && row.worked && (
+                      <DropdownMenuItem onSelect={() => post(row, { paid: !row.paid }, row.paid ? "أُلغي تأكيد القبض" : `سُجّل قبض راتب ${row.label}`)}>
+                        <Banknote /> {row.paid ? "إلغاء تأكيد القبض" : "تم القبض"}
+                      </DropdownMenuItem>
+                    )}
+                    <DropdownMenuItem
+                      onSelect={() =>
+                        post(
+                          row,
+                          // New month → record it as "didn't work"; existing → flip.
+                          { worked: row.exists ? !row.worked : false },
+                          row.exists && !row.worked ? `${row.label}: عاد للعمل` : `${row.label}: لم يعمل`
+                        )
+                      }
+                    >
+                      {row.worked || !row.exists ? <UserX /> : <UserCheck />}
+                      {row.worked || !row.exists ? "لم أعمل هذا الشهر" : "عملت هذا الشهر"}
+                    </DropdownMenuItem>
+                    {row.exists && (
+                      <>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem className="text-rose-600 [&_svg]:text-rose-500" onSelect={() => setConfirmDelete(row)}>
+                          <Trash2 /> حذف الراتب
+                        </DropdownMenuItem>
+                      </>
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </li>
+            );
+          })}
+        </ul>
+      </Card>
+
+      {review && (
+        <SlipReviewDialog
+          key={review.key}
+          open
+          onOpenChange={(o) => !o && setReview(null)}
+          employers={employerOption}
+          existing={existing}
+          lockEmployer
+          parsed={review.parsed}
+          currentPeriod={currentPeriod}
+          initial={{
+            employerId: detail.id,
+            year: detail.year,
+            month: review.month,
+            values: review.row ? valuesOf(review.row) : valuesOf(monthDefaultsFromBase(detail.base)),
+            breakdown: review.row ? review.row.slipBreakdown : null,
+            paid: review.row?.paid,
+          }}
+        />
+      )}
+
+      {baseOpen != null && <BaseSalaryDialog key={baseOpen} detail={detail} onClose={() => setBaseOpen(null)} />}
+
+      <ConfirmDialog
+        open={confirmDelete != null}
+        onOpenChange={(o) => !o && setConfirmDelete(null)}
+        destructive
+        pending={isPending}
+        confirmLabel="حذف"
+        title={`حذف راتب ${confirmDelete?.label ?? ""}؟`}
+        description="يُحذف الراتب ودخله من المعاملات ولوحة التحكم."
+        onConfirm={deleteSlip}
+      />
+    </div>
+  );
+}
+
+/** Default monthly figures used to pre-fill new months. */
+function BaseSalaryDialog({ detail, onClose }: { detail: Detail; onClose: () => void }) {
+  const router = useRouter();
+  const [isPending, startTransition] = useTransition();
+  const [role, setRole] = useState(detail.role ?? "");
+  const [values, setValues] = useState<Record<SlipKeys, string>>(() => {
+    const v = valuesOf({ ...monthDefaultsFromBase(detail.base) });
+    return Object.fromEntries(Object.entries(v).map(([k, n]) => [k, n ? String(n) : ""])) as Record<SlipKeys, string>;
+  });
+  const [parts, setParts] = useState(() => partsFromBreakdown(detail.base.slipBreakdown));
+  const n = (k: SlipKeys) => Number(values[k]) || 0;
+
+  const save = () =>
     startTransition(async () => {
+      const base = { gross: n("gross"), net: n("net"), tax: n("tax"), pension: n("pension"), keren: n("kerenHishtalmut"), fees: n("fees"), bonus: n("bonus") };
       const res = await fetch(`/api/employers/${detail.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          role: baseForm.role,
-          baseGross: baseForm.baseGross,
-          baseNet: baseForm.baseNet,
-          baseTax: baseForm.baseTax,
-          basePension: baseForm.basePension,
-          baseKeren: baseForm.baseKeren,
-          baseFees: baseForm.baseFees,
-          baseBonus: baseForm.baseBonus,
-          baseSlipBreakdown: breakdown,
+          role,
+          baseGross: base.gross,
+          baseNet: base.net,
+          baseTax: base.tax,
+          basePension: base.pension,
+          baseKeren: base.keren,
+          baseFees: base.fees,
+          baseBonus: base.bonus,
+          baseSlipBreakdown: breakdownFromBaseForm(base, parts) ?? undefined,
         }),
       });
-      if (!res.ok) {
-        toast.error("فشل حفظ الإعدادات");
-        return;
-      }
-      toast.success("تم حفظ الراتب الأساسي");
-      setEditBase(false);
+      if (!res.ok) return void toast.error("تعذّر الحفظ");
+      toast.success("حُفظ الراتب الأساسي");
+      onClose();
       router.refresh();
     });
-  };
 
   return (
-    <div className="space-y-4 pb-4 sm:space-y-6">
-      <Link
-        href="/salary"
-        className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-800"
-      >
-        <ArrowRight className="h-4 w-4" />
-        متابعة الراتب
-      </Link>
-
-      {/* Header */}
-      <motion.div
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm sm:p-6"
-      >
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <div className="flex items-center gap-2 text-sm text-slate-500">
-              <Briefcase className="h-4 w-4" />
-              جهة عمل
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="sm:max-w-xl">
+        <form
+          className="flex min-h-0 flex-1 flex-col"
+          onSubmit={(e) => {
+            e.preventDefault();
+            save();
+          }}
+        >
+          <DialogHeader>
+            <DialogTitle>الراتب الأساسي</DialogTitle>
+            <DialogDescription>يُستخدم لتعبئة الأشهر الجديدة تلقائياً — ويمكن تعديل كل شهر على حدة.</DialogDescription>
+          </DialogHeader>
+          <DialogBody className="space-y-4">
+            <div>
+              <Label htmlFor="base-role">المسمّى الوظيفي</Label>
+              <Input id="base-role" value={role} onChange={(e) => setRole(e.target.value)} maxLength={120} />
             </div>
-            <h1 className="mt-1 text-2xl font-extrabold text-slate-900 sm:text-3xl">
-              {detail.name}
-            </h1>
-            {detail.role && (
-              <p className="mt-1 text-sm text-slate-600">{detail.role}</p>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => router.push(`/salary/${detail.id}?year=${detail.year - 1}`)}
-            >
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-            <span className="rounded-lg bg-slate-100 px-3 py-1.5 text-sm font-bold">
-              {detail.year}
-            </span>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => router.push(`/salary/${detail.id}?year=${detail.year + 1}`)}
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
-
-        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-          {[
-            { label: "صافي المقبوض", value: detail.totals.net, color: "text-emerald-700" },
-            { label: "إجمالي المقبوض", value: detail.totals.gross, color: "text-slate-900" },
-            {
-              label: "أشهر عمل",
-              value: `${detail.totals.workedMonths}`,
-              color: "text-indigo-700",
-              isText: true,
-            },
-            {
-              label: "أشهر توقف",
-              value: `${detail.totals.stoppedMonths}`,
-              color: "text-rose-700",
-              isText: true,
-            },
-            {
-              label: "أشهر مقبوضة",
-              value: `${detail.totals.paidMonths}`,
-              color: "text-amber-600",
-              isText: true,
-            },
-          ].map((kpi) => (
-            <div key={kpi.label} className="rounded-xl bg-slate-50 p-3">
-              <p className="text-xs text-slate-500">{kpi.label}</p>
-              <p className={`text-lg font-extrabold ${kpi.color}`}>
-                {"isText" in kpi && kpi.isText
-                  ? (kpi.value as string)
-                  : formatCurrency(kpi.value as number)}
-              </p>
-            </div>
-          ))}
-        </div>
-      </motion.div>
-
-      {/* Base template */}
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="text-base sm:text-lg">
-            الراتب الأساسي (الافتراضي)
-          </CardTitle>
-          {editBase ? (
-            <div className="flex gap-2">
-              <Button size="sm" onClick={saveBase} disabled={isPending}>
-                <Save className="h-4 w-4" /> حفظ
-              </Button>
-              <Button size="sm" variant="ghost" onClick={() => setEditBase(false)}>
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-          ) : (
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => {
-                setBaseForm({
-                  baseGross: detail.base.gross,
-                  baseNet: detail.base.net,
-                  baseTax: detail.base.tax,
-                  basePension: detail.base.pension,
-                  baseKeren: detail.base.keren,
-                  baseFees: detail.base.fees,
-                  baseBonus: detail.base.bonus,
-                  role: detail.role ?? "",
-                  ...partsFromBreakdown(detail.base.slipBreakdown),
-                });
-                setEditBase(true);
-              }}
-            >
-              <Pencil className="h-4 w-4" /> تعديل
-            </Button>
-          )}
-        </CardHeader>
-        <CardContent>
-          {editBase ? (
-            <div className="space-y-4">
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                <div className="sm:col-span-2 lg:col-span-3">
-                  <Label>المسمّى الوظيفي</Label>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+              {SLIP_FIELDS.map(({ key, label, he }) => (
+                <div key={key}>
+                  <Label htmlFor={`base-${key}`}>
+                    {label} <span className="text-[11px] font-normal text-slate-400">{he}</span>
+                  </Label>
                   <Input
-                    value={baseForm.role}
-                    onChange={(e) => setBaseForm((f) => ({ ...f, role: e.target.value }))}
+                    id={`base-${key}`}
+                    type="number"
+                    inputMode="decimal"
+                    step="0.01"
+                    min="0"
+                    value={values[key]}
+                    onChange={(e) => setValues((v) => ({ ...v, [key]: e.target.value }))}
+                    className="num"
                   />
                 </div>
-                {BASE_FIELD_KEYS.map((key) => (
+              ))}
+            </div>
+            <details className="rounded-2xl border border-slate-200">
+              <summary className="cursor-pointer list-none px-4 py-3 text-sm font-semibold text-slate-700">تفصيل الضرائب (اختياري)</summary>
+              <div className="grid gap-3 px-4 pb-4 sm:grid-cols-3">
+                {(
+                  [
+                    ["taxNationalInsurance", "ביטוח לאומי"],
+                    ["taxHealthInsurance", "מס בריאות"],
+                    ["taxIncome", "מס הכנסה"],
+                  ] as const
+                ).map(([key, label]) => (
                   <div key={key}>
-                    <Label className="text-xs">{BASE_FIELD_LABELS[key]}</Label>
+                    <Label htmlFor={`base-${key}`}>{label}</Label>
                     <Input
+                      id={`base-${key}`}
                       type="number"
                       step="0.01"
-                      value={baseForm[key] || ""}
-                      onChange={(e) =>
-                        setBaseForm((f) => ({ ...f, [key]: Number(e.target.value) }))
-                      }
+                      min="0"
+                      value={parts[key] || ""}
+                      onChange={(e) => setParts((p) => ({ ...p, [key]: Number(e.target.value) || 0 }))}
+                      className="num"
                     />
                   </div>
                 ))}
               </div>
-              <div className="rounded-xl border border-rose-100 bg-rose-50/40 p-3">
-                <p className="mb-2 text-xs font-bold text-rose-800">
-                  פירוט מסים (اختياري — يُنسخ لكل شهر جديد)
-                </p>
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                  {(
-                    Object.keys(TAX_PART_LABELS) as (keyof typeof TAX_PART_LABELS)[]
-                  ).map((key) => (
-                    <div key={key}>
-                      <Label className="text-xs">{TAX_PART_LABELS[key]}</Label>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        value={baseForm[key] || ""}
-                        onChange={(e) =>
-                          setBaseForm((f) => ({
-                            ...f,
-                            [key]: Number(e.target.value),
-                          }))
-                        }
-                      />
-                    </div>
-                  ))}
-                </div>
-                <p className="mt-2 text-[11px] text-slate-500">
-                  إن تركت الفصل فارغاً يُستخدم «מסים (סה״כ)» فقط.
-                </p>
-              </div>
-              {previewBaseBreakdown(baseForm) && (
-                <SlipBreakdownCard breakdown={previewBaseBreakdown(baseForm)!} compact />
-              )}
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3 lg:grid-cols-4">
-              {(
-                [
-                  [FIELD_LABELS.gross, detail.base.gross],
-                  [FIELD_LABELS.net, detail.base.net],
-                  [FIELD_LABELS.tax, detail.base.tax],
-                  [FIELD_LABELS.pension, detail.base.pension],
-                  [FIELD_LABELS.kerenHishtalmut, detail.base.keren],
-                  [FIELD_LABELS.fees, detail.base.fees],
-                  [FIELD_LABELS.bonus, detail.base.bonus],
-                ] as const
-              ).map(([label, value]) => (
-                <div key={label} className="rounded-xl bg-slate-50 p-3">
-                  <p className="text-xs text-slate-500">{label}</p>
-                  <p className="font-bold text-slate-900">{formatCurrency(value)}</p>
-                </div>
-              ))}
-            </div>
-          )}
-          {!editBase && detail.base.slipBreakdown && (
-            <div className="mt-3">
-              <SlipBreakdownCard breakdown={detail.base.slipBreakdown} compact />
-            </div>
-          )}
-          <p className="mt-3 text-xs text-slate-500">
-            هذه القيم تُستخدم كقيمة افتراضية عند إضافة شهر جديد، ويمكن تعديل كل
-            شهر على حدة.
-          </p>
-        </CardContent>
-      </Card>
-
-      {/* Monthly grid */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base sm:text-lg">رواتب {detail.year}</CardTitle>
-          <p className="text-xs text-slate-500">
-            يُزامَن الراتب تلقائياً مع دخل نفس الشهر في المعاملات.
-          </p>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          {detail.months.map((row) => {
-            const isEditing = editingMonth === row.month;
-            return (
-              <div
-                key={row.month}
-                className={cn(
-                  "rounded-xl border p-3",
-                  !row.worked
-                    ? "border-rose-100 bg-rose-50/40"
-                    : row.exists
-                      ? "border-emerald-100 bg-emerald-50/30"
-                      : "border-slate-100 bg-white"
-                )}
-              >
-                <div className="flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-3">
-                    <button
-                      type="button"
-                      onClick={() => toggleWorked(row)}
-                      disabled={isPending}
-                      aria-label={row.worked ? "إيقاف العمل" : "تفعيل العمل"}
-                      className={cn(
-                        "flex h-9 w-9 items-center justify-center rounded-full border-2 transition-all",
-                        row.worked
-                          ? "border-emerald-600 bg-emerald-600 text-white"
-                          : "border-slate-300 bg-white text-transparent hover:border-emerald-400"
-                      )}
-                    >
-                      <Check className="h-5 w-5" strokeWidth={3} />
-                    </button>
-                    <div>
-                      <p className="font-bold text-slate-900">{row.label}</p>
-                      <p className="text-xs text-slate-500">
-                        {row.worked
-                          ? row.exists
-                            ? `صافي ${formatCurrency(row.effectiveNet)}${row.paid && row.paidAt ? ` · قُبض ${row.paidAt}` : ""}`
-                            : "لم يُسجّل بعد"
-                          : "توقف عن العمل — لا يُحتسب"}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {!row.worked && <Badge variant="warning">متوقف</Badge>}
-                    {row.worked && row.exists && (
-                      <Badge variant={row.paid ? "success" : "warning"}>
-                        {row.paid ? "تم القبض" : "بانتظار"}
-                      </Badge>
-                    )}
-                    {row.worked && row.exists && (
-                      <Button
-                        size="sm"
-                        variant={row.paid ? "outline" : "default"}
-                        disabled={isPending}
-                        onClick={() => togglePaid(row)}
-                      >
-                        <Banknote className="h-4 w-4" />
-                        {row.paid ? "إلغاء القبض" : "تم القبض"}
-                      </Button>
-                    )}
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => (isEditing ? setEditingMonth(null) : startEdit(row))}
-                    >
-                      {isEditing ? <X className="h-4 w-4" /> : <Pencil className="h-4 w-4" />}
-                    </Button>
-                    {row.exists && (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="text-rose-600 hover:bg-rose-50"
-                        disabled={isPending}
-                        onClick={() => deleteSlip(row)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    )}
-                  </div>
-                </div>
-
-                {isEditing && (
-                  <div className="mt-3 space-y-3 border-t border-slate-100 pt-3">
-                    <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-indigo-200 bg-indigo-50/50 px-4 py-3 text-sm font-medium text-indigo-800 transition hover:bg-indigo-50">
-                      <FileUp className="h-4 w-4" />
-                      {parseLoading ? "جاري قراءة PDF…" : "رفع תלוש (PDF) — מסים ופנסיה"}
-                      <input
-                        type="file"
-                        accept="application/pdf,.pdf"
-                        className="sr-only"
-                        disabled={parseLoading || isPending}
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (file) uploadPayslip(row.month, file);
-                          e.target.value = "";
-                        }}
-                      />
-                    </label>
-
-                    {editForm.slipBreakdown && (
-                      <SlipBreakdownCard breakdown={editForm.slipBreakdown} />
-                    )}
-
-                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                      {(
-                        ["gross", "net", "tax", "pension", "kerenHishtalmut", "fees", "bonus"] as const
-                      ).map((key) => (
-                        <div key={key}>
-                          <Label className="text-xs">{FIELD_LABELS[key]}</Label>
-                          <Input
-                            type="number"
-                            step="0.01"
-                            value={editForm[key] ?? 0}
-                            onChange={(e) =>
-                              setEditForm((f) => ({
-                                ...f,
-                                [key]: Number(e.target.value),
-                              }))
-                            }
-                          />
-                        </div>
-                      ))}
-                    </div>
-                    <div className="flex gap-2">
-                      <Button
-                        size="sm"
-                        disabled={isPending}
-                        onClick={() => saveMonth(row.month, editForm, row.worked)}
-                      >
-                        <Save className="h-4 w-4" /> حفظ الشهر
-                      </Button>
-                    </div>
-                  </div>
-                )}
-
-                {!isEditing && row.slipBreakdown && (
-                  <div className="mt-3">
-                    <SlipBreakdownCard breakdown={row.slipBreakdown} compact />
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </CardContent>
-      </Card>
-    </div>
+            </details>
+          </DialogBody>
+          <DialogFooter>
+            <Button type="button" variant="ghost" onClick={onClose}>إلغاء</Button>
+            <Button type="submit" variant="brand" disabled={isPending}>حفظ</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }

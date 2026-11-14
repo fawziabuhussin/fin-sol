@@ -54,5 +54,7 @@ export type PayslipParseResult = {
   breakdown?: SalarySlipBreakdown;
   employerHint?: "bgu" | "menora" | "generic";
   confidence: "high" | "medium" | "low";
+  /** Fields computed from other figures rather than read from the slip. */
+  derivedFields?: string[];
   rawText: string;
 };

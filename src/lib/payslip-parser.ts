@@ -18,7 +18,8 @@ const HEBREW_MONTHS: Record<string, number> = {
   דצמבר: 12,
 };
 
-const AMOUNT = String.raw`(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)`;
+/** A money amount that is not part of a longer number (e.g. "500.00" inside "12,500.00"). */
+const AMOUNT = String.raw`(?<![\d,.])(\d{1,3}(?:,\d{3})*(?:\.\d{2})?|\d+(?:\.\d{2})?)(?![\d,]*\d)`;
 
 function parseAmount(raw: string | undefined) {
   if (!raw) return undefined;
@@ -36,16 +37,19 @@ function labelPatterns(hebrew: string) {
   return [hebrew, rev].map(escapeRegex);
 }
 
+/**
+ * Amount on the same line as a label. Label→amount is tried before
+ * amount→label, and matches never cross a line break — otherwise a label
+ * picks up the previous row's number (e.g. "נטו" grabbing the income-tax line).
+ */
 function findAmountNearLabel(text: string, labels: string[]): number | undefined {
   for (const label of labels) {
     for (const lab of labelPatterns(label)) {
-      const re = new RegExp(
-        `${lab}\\s*[:\\-]?\\s*${AMOUNT}|${AMOUNT}\\s*${lab}`,
-        "i"
-      );
-      const m = text.match(re);
-      if (m) {
-        const val = parseAmount(m[1] ?? m[2]);
+      for (const re of [
+        new RegExp(`${lab}[ \\t:\\-₪]*${AMOUNT}`, "i"),
+        new RegExp(`${AMOUNT}[ \\t₪]*${lab}`, "i"),
+      ]) {
+        const val = parseAmount(text.match(re)?.[1]);
         if (val != null) return val;
       }
     }
@@ -55,7 +59,8 @@ function findAmountNearLabel(text: string, labels: string[]): number | undefined
 
 function detectEmployer(text: string, fileName?: string): PayslipParseResult["employerHint"] {
   const blob = `${text}\n${fileName ?? ""}`;
-  if (/בן\s*גוריון|Ben[- ]?Gurion|8410501|áâðá|תלוש/i.test(blob)) return "bgu";
+  // Note: not "תלוש" — that word is on every Israeli payslip.
+  if (/בן\s*גוריון|Ben[- ]?Gurion|8410501|áâðá/i.test(blob)) return "bgu";
   if (/מנורה|Menora|116/i.test(blob)) return "menora";
   return "generic";
 }
@@ -80,6 +85,11 @@ function periodFromText(text: string) {
       const year = Number.parseInt(named[1], 10);
       if (year >= 2020) return { periodMonth: month, periodYear: year };
     }
+    // RTL extraction often puts the year before the month name on the same line.
+    const reversed = text.match(new RegExp(`(20\\d{2})[^\\n\\d]{0,40}?${escapeRegex(name)}`));
+    if (reversed) {
+      return { periodMonth: month, periodYear: Number.parseInt(reversed[1], 10) };
+    }
   }
 
   const m = text.match(/(\d{1,2})[\/\-.](\d{4})/g);
@@ -92,7 +102,7 @@ function periodFromText(text: string) {
   return {};
 }
 
-function applyOfficialBguSlip(result: PayslipParseResult): PayslipParseResult {
+export function applyOfficialBguSlip(result: PayslipParseResult): PayslipParseResult {
   if (result.employerHint !== "bgu") return result;
   if (result.periodYear == null || result.periodMonth == null) return result;
   const official = officialJamaShoglSlipFromPdf(
@@ -196,6 +206,7 @@ function parseBguPayslip(text: string, fileName?: string): PayslipParseResult {
     });
   }
 
+  const derived: string[] = [];
   let pensionEmployee = pensionLines.reduce((s, l) => s + l.employee, 0);
   let pensionEmployer = pensionLines.reduce((s, l) => s + l.employer, 0);
   const severanceEmployer = pensionLines
@@ -210,10 +221,12 @@ function parseBguPayslip(text: string, fileName?: string): PayslipParseResult {
     if (incomeTax == null) {
       incomeTax = Math.round((withholdings - ni - health - keren - pensionEmployee) * 100) / 100;
       if (incomeTax < 0) incomeTax = 0;
+      if (incomeTax > 0) derived.push("tax");
     }
     if (pensionEmployee === 0 && withholdings > ni + health + keren) {
       pensionEmployee = Math.round((withholdings - ni - health - keren - (incomeTax ?? 0)) * 100) / 100;
       if (pensionEmployee < 0) pensionEmployee = 0;
+      if (pensionEmployee > 0) derived.push("pension");
     }
   }
 
@@ -264,12 +277,16 @@ function parseBguPayslip(text: string, fileName?: string): PayslipParseResult {
     breakdown.taxes.total = taxFromSummary;
   }
   result.breakdown = breakdown;
+  result.derivedFields = derived;
 
   const filled = [gross, net, nationalInsurance ?? taxFromSummary].filter(
     (v) => v != null && v > 0
   ).length;
   result.confidence = filled >= 3 ? "high" : filled >= 2 ? "medium" : "low";
-  return applyOfficialBguSlip(result);
+  // Never claim confidence for numbers that cannot be right.
+  if (gross != null && net != null && net > gross) result.confidence = "low";
+  else if (gross != null && net != null && result.tax != null && result.tax > gross) result.confidence = "low";
+  return result;
 }
 
 /** Menora / private employer format (תגמולים + פיצויים + קרן השתלמות). */
@@ -348,7 +365,10 @@ export async function extractTextFromFile(file: File): Promise<string> {
 
   if (file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")) {
     const buffer = Buffer.from(await file.arrayBuffer());
-    const pdfParse = (await import("pdf-parse")).default as (
+    // Import the library entry directly: pdf-parse's index.js runs a debug
+    // routine (reading a bundled test PDF) when it has no module.parent, which
+    // is the case under dynamic import — every upload used to fail with ENOENT.
+    const pdfParse = (await import("pdf-parse/lib/pdf-parse.js")).default as (
       buf: Buffer
     ) => Promise<{ text: string }>;
     const { text } = await pdfParse(buffer);

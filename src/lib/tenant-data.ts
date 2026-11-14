@@ -13,6 +13,7 @@ import { INCOME_SOURCES, monthLabel } from "@/lib/finance-labels";
 import { paidAtForPeriod } from "@/lib/savings-schedule";
 import type { SalarySlipBreakdown } from "@/lib/payslip-types";
 import { applyOfficialJamaShoglIfStale } from "@/lib/jama-shogl-payslip";
+import { isOwnerEmail } from "@/lib/security/owner";
 import { persistOfficialJamaShoglSlips } from "@/lib/jama-shogl-repair";
 import { getMarketRates } from "@/lib/market-rates";
 import { computeAssetValueIls } from "@/lib/savings-asset-value";
@@ -1252,7 +1253,18 @@ export async function getProjectDetail(userId: string, projectId: string) {
   };
 }
 
+function keepStoredSlip<T>(_name: string, _year: number, _month: number, stored: T): T {
+  return stored;
+}
+
+/** Owner-only hard-coded payslip corrections must never touch other accounts. */
+async function userIsOwner(userId: string) {
+  const u = await prisma.user.findUnique({ where: { id: userId }, select: { email: true } });
+  return isOwnerEmail(u?.email);
+}
+
 export async function getEmployerKupot(userId: string) {
+  const isOwner = await userIsOwner(userId);
   const employers = await prisma.employer.findMany({
     where: { userId, active: true },
     include: {
@@ -1269,7 +1281,7 @@ export async function getEmployerKupot(userId: string) {
 
   return employers.map((emp) => {
     const hydratedSlips = emp.salarySlips.map((s) => {
-      const hydrated = applyOfficialJamaShoglIfStale(
+      const hydrated = (isOwner ? applyOfficialJamaShoglIfStale : keepStoredSlip)(
         emp.name,
         s.periodYear,
         s.periodMonth,
@@ -1436,6 +1448,7 @@ export async function getEmployerDetail(
   year: number
 ) {
   await persistOfficialJamaShoglSlips(userId, year);
+  const isOwner = await userIsOwner(userId);
 
   const employer = await prisma.employer.findFirst({
     where: { id: employerId, userId },
@@ -1485,7 +1498,7 @@ export async function getEmployerDetail(
         slipBreakdown: null as SalarySlipBreakdown | null,
       };
     }
-    const hydrated = applyOfficialJamaShoglIfStale(employer.name, year, month, {
+    const hydrated = (isOwner ? applyOfficialJamaShoglIfStale : keepStoredSlip)(employer.name, year, month, {
       gross: decimalToNumber(slip.gross),
       net: decimalToNumber(slip.net),
       tax: decimalToNumber(slip.tax),

@@ -4,6 +4,7 @@ const INTILAQA_NAMES = ["انطلاقة", "Intilaqa", "אנתלאקה"];
 
 export function isIntilaqaEmployer(name: string) {
   const n = name.trim();
+  if (!n) return false; // "".includes() is true for every hint
   return INTILAQA_NAMES.some(
     (hint) => n.includes(hint) || hint.includes(n)
   );
